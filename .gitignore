@@ -1,0 +1,12 @@
+# dependencies & build output
+node_modules/
+dist/
+*.log
+
+# OAuth secrets & tokens — NEVER commit these
+.gmail-mcp/
+credentials*.json
+token*.json
+gcp-oauth*.json
+.env
+.env.*

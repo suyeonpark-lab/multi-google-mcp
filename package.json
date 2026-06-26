@@ -1,0 +1,39 @@
+{
+  "name": "gmail-mcp",
+  "version": "0.1.0",
+  "description": "A Model Context Protocol server for managing Gmail (multi-account) from Claude Code.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "gmail-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "gmail",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.9.0",
+      "onFail": "download"
+    }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.3"
+  }
+}
