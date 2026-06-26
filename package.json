@@ -12,7 +12,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "auth": "node dist/authorize.js"
   },
   "keywords": [
     "mcp",
@@ -24,12 +25,14 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "^11.9.0",
+      "version": "11.9.0",
       "onFail": "download"
     }
   },
   "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "googleapis": "^173.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
