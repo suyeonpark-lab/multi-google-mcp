@@ -1,11 +1,16 @@
-// authorize.ts — one-time OAuth setup. Run with:  pnpm run auth
+// authorize.ts — one-time OAuth setup per account.
+//   pnpm run auth <account>      e.g.  pnpm run auth personal
 //
-// Opens a browser: pick the Google account + grant access. The resulting
-// refresh token is saved to ~/.gmail-mcp/token.json so the server never
-// has to prompt again.
+// Opens a browser: pick THAT Google account + grant access. The refresh token
+// is saved to ~/.gmail-mcp/<account>/token.json.
 
 import { authorizeInteractive } from "./auth.js";
 
-await authorizeInteractive();
-console.error("✓ Authorized. Token saved to ~/.gmail-mcp/token.json");
-console.error("  You can now use the `search` tool from Claude.");
+const account = process.argv[2];
+if (!account) {
+  console.error("Usage: pnpm run auth <account>   (e.g. pnpm run auth personal)");
+  process.exit(1);
+}
+
+await authorizeInteractive(account);
+console.error(`✓ Authorized "${account}". Token saved to ~/.gmail-mcp/${account}/token.json`);

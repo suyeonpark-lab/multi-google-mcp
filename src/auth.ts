@@ -1,12 +1,10 @@
-// auth.ts — Google OAuth for the Gmail MCP server.
+// auth.ts — Google OAuth, multi-account.
 //
-// Two entry points:
-//   authorizeInteractive() — opens a browser for one-time consent, saves a token.
-//                            Used by `pnpm run auth`.
-//   getAuthClient()        — loads the saved token (no browser). Used by the server.
+// Layout under ~/.gmail-mcp/ (gitignored):
+//   credentials.json          ← shared OAuth client (the app identity)
+//   <account>/token.json      ← per-account access token
 //
-// Secrets live in ~/.gmail-mcp/ (gitignored). Paths are overridable via env vars
-// so we can support multiple accounts later (one token file per account).
+// One MCP server handles many accounts; the account is chosen per tool call.
 
 import path from "node:path";
 import os from "node:os";
@@ -14,37 +12,51 @@ import { promises as fs } from "node:fs";
 import { authenticate } from "@google-cloud/local-auth";
 import { google, Auth } from "googleapis";
 
-// Use the OAuth2Client type that `googleapis` ITSELF uses, so it lines up with
-// google.gmail({ auth }). Importing it from a separately-versioned
-// google-auth-library caused a "two different OAuth2Client" type clash.
+// Use googleapis' own OAuth2Client type so it matches google.gmail({ auth }).
 type AuthClient = Auth.OAuth2Client;
 
-// gmail.modify = read + write labels + move-to-trash (NOT permanent delete, NOT send).
-// Covers our near-term tools (search, label, trash). Filters need an extra scope later.
 const SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
 
 const CONFIG_DIR =
   process.env.GMAIL_MCP_DIR ?? path.join(os.homedir(), ".gmail-mcp");
 const CREDENTIALS_PATH =
   process.env.GMAIL_MCP_CREDENTIALS ?? path.join(CONFIG_DIR, "credentials.json");
-const TOKEN_PATH =
-  process.env.GMAIL_MCP_TOKEN ?? path.join(CONFIG_DIR, "token.json");
 
-// Load a previously-saved token (an "authorized_user" JSON). null if none yet.
-async function loadSavedCredentialsIfExist(): Promise<AuthClient | null> {
+function tokenPath(account: string): string {
+  return path.join(CONFIG_DIR, account, "token.json");
+}
+
+// Accounts that have a saved token (i.e. are authorized).
+export async function listAccounts(): Promise<string[]> {
   try {
-    const content = await fs.readFile(TOKEN_PATH, "utf-8");
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials) as unknown as AuthClient;
+    const entries = await fs.readdir(CONFIG_DIR, { withFileTypes: true });
+    const accounts: string[] = [];
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      try {
+        await fs.access(path.join(CONFIG_DIR, e.name, "token.json"));
+        accounts.push(e.name);
+      } catch {
+        // no token in this dir → not an authorized account
+      }
+    }
+    return accounts.sort();
   } catch {
-    return null; // no token file (or unreadable) → treat as "not authorized"
+    return [];
   }
 }
 
-// Write token.json from the OAuth client keyfile + the new refresh token.
-async function saveToken(refreshToken: string): Promise<void> {
-  const content = await fs.readFile(CREDENTIALS_PATH, "utf-8");
-  const keys = JSON.parse(content);
+async function loadToken(account: string): Promise<AuthClient | null> {
+  try {
+    const content = await fs.readFile(tokenPath(account), "utf-8");
+    return google.auth.fromJSON(JSON.parse(content)) as unknown as AuthClient;
+  } catch {
+    return null;
+  }
+}
+
+async function saveToken(account: string, refreshToken: string): Promise<void> {
+  const keys = JSON.parse(await fs.readFile(CREDENTIALS_PATH, "utf-8"));
   const key = keys.installed ?? keys.web; // desktop OAuth clients use "installed"
   const payload = JSON.stringify({
     type: "authorized_user",
@@ -52,29 +64,49 @@ async function saveToken(refreshToken: string): Promise<void> {
     client_secret: key.client_secret,
     refresh_token: refreshToken,
   });
-  await fs.mkdir(CONFIG_DIR, { recursive: true });
-  await fs.writeFile(TOKEN_PATH, payload);
+  const dir = path.join(CONFIG_DIR, account);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, "token.json"), payload);
 }
 
-// INTERACTIVE: run once via `pnpm run auth`. Opens a browser for consent.
-export async function authorizeInteractive(): Promise<void> {
-  if (await loadSavedCredentialsIfExist()) return; // already authorized
+// INTERACTIVE: `pnpm run auth <account>`. Opens a browser for consent.
+export async function authorizeInteractive(account: string): Promise<void> {
+  if (await loadToken(account)) return; // already authorized
   const client = await authenticate({
     scopes: SCOPES,
     keyfilePath: CREDENTIALS_PATH,
   });
-  // We only need the refresh token (a string) — avoids passing a client of a
-  // possibly different google-auth-library version across module boundaries.
   const refreshToken = client.credentials.refresh_token;
-  if (refreshToken) await saveToken(refreshToken);
+  if (!refreshToken) {
+    throw new Error(
+      "No refresh token returned by Google. Remove the account folder and try again."
+    );
+  }
+  await saveToken(account, refreshToken);
 }
 
-// NON-INTERACTIVE: used by the MCP server. Loads the saved token only.
-export async function getAuthClient(): Promise<AuthClient> {
-  const client = await loadSavedCredentialsIfExist();
+// SERVER: resolve which account to use.
+//   explicit account            → use it (must be authorized)
+//   omitted + exactly 1 account → use that one
+//   omitted + 0 or many         → throw a helpful message
+export async function getAuthClient(account?: string): Promise<AuthClient> {
+  const available = await listAccounts();
+  const chosen =
+    account ?? (available.length === 1 ? available[0] : undefined);
+  if (!chosen) {
+    if (available.length === 0) {
+      throw new Error(
+        "No accounts authorized yet. Run `pnpm run auth <account>` first."
+      );
+    }
+    throw new Error(
+      `Multiple accounts available: ${available.join(", ")}. Specify one via the "account" argument.`
+    );
+  }
+  const client = await loadToken(chosen);
   if (!client) {
     throw new Error(
-      "Not authorized yet. Run `pnpm run auth` once to grant Gmail access."
+      `Account "${chosen}" is not authorized. Available: ${available.join(", ") || "(none)"}. Run \`pnpm run auth ${chosen}\`.`
     );
   }
   return client;
