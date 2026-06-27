@@ -15,7 +15,10 @@ import { google, Auth } from "googleapis";
 // Use googleapis' own OAuth2Client type so it matches google.gmail({ auth }).
 type AuthClient = Auth.OAuth2Client;
 
-const SCOPES = ["https://www.googleapis.com/auth/gmail.modify"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/gmail.modify", // read + labels + trash
+  "https://www.googleapis.com/auth/gmail.settings.basic", // create/list filters
+];
 
 const CONFIG_DIR =
   process.env.GMAIL_MCP_DIR ?? path.join(os.homedir(), ".gmail-mcp");
