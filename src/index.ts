@@ -8,9 +8,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { gmail_v1 } from "googleapis";
 import { listAccounts, authorizeInteractive } from "./auth.js";
-import { getGmail, resolveLabelIds } from "./gmail.js";
+import { getGmail, resolveLabelIds, collectMessageIds } from "./gmail.js";
 
-const server = new McpServer({ name: "multi-gmail-mcp", version: "0.4.0" });
+const server = new McpServer({ name: "multi-gmail-mcp", version: "0.5.0" });
 
 // Reusable "which account?" argument.
 const accountArg = z
@@ -348,6 +348,99 @@ server.registerTool(
             .join("\n\n")
         : "No filters.";
       return { content: [{ type: "text", text }] };
+    } catch (err) {
+      return fail(err);
+    }
+  }
+);
+
+// --- batch: bulk label / archive / trash by query ---
+server.registerTool(
+  "batch",
+  {
+    title: "Bulk apply to a query",
+    description:
+      "Apply an action to ALL messages matching a Gmail query (paginated, so it is not " +
+      "capped at 25 like search). Actions: add/remove labels, archive (remove from inbox), " +
+      "or trash. **Previews by default** (apply=false): returns the match count and the planned " +
+      "action without changing anything — show this to the user first. Re-run with apply=true to " +
+      "execute. **Trashing also requires confirmTrash=true** (a deliberate final confirmation). " +
+      "Prefer archive over trash when unsure: archive keeps the mail, just removes it from the inbox.",
+    inputSchema: {
+      account: accountArg,
+      query: z
+        .string()
+        .describe('Gmail query selecting the messages, e.g. "from:costco.co.kr" or "category:promotions older_than:1y"'),
+      addLabels: z.array(z.string()).optional().describe("Label names to add"),
+      removeLabels: z.array(z.string()).optional().describe("Label names to remove"),
+      archive: z.boolean().optional().describe("Remove from inbox (keep the mail) — same as removing INBOX"),
+      trash: z.boolean().optional().describe("Move to Trash (recoverable 30 days). Requires confirmTrash."),
+      apply: z.boolean().optional().describe("false (default) = preview only; true = execute"),
+      confirmTrash: z.boolean().optional().describe("Must be true to actually trash (final confirmation)"),
+    },
+  },
+  async ({ account, query, addLabels, removeLabels, archive, trash, apply, confirmTrash }) => {
+    try {
+      const gmail = await getGmail(account);
+
+      const addLabelIds: string[] = [];
+      const removeLabelIds: string[] = [];
+      if (addLabels?.length) addLabelIds.push(...(await resolveLabelIds(gmail, addLabels)));
+      if (removeLabels?.length) removeLabelIds.push(...(await resolveLabelIds(gmail, removeLabels)));
+      if (archive) removeLabelIds.push("INBOX");
+      if (trash) addLabelIds.push("TRASH");
+      if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+        throw new Error("Provide an action: addLabels / removeLabels / archive / trash.");
+      }
+
+      const planParts: string[] = [];
+      if (addLabels?.length) planParts.push(`+[${addLabels.join(", ")}]`);
+      if (removeLabels?.length) planParts.push(`-[${removeLabels.join(", ")}]`);
+      if (archive) planParts.push("archive(-INBOX)");
+      if (trash) planParts.push("TRASH");
+      const plan = planParts.join(" ");
+
+      const { ids, truncated } = await collectMessageIds(gmail, query);
+      const head = `${ids.length}${truncated ? "+" : ""} message(s) match "${query}". Action: ${plan}.`;
+
+      if (!apply) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `[PREVIEW — nothing changed] ${head}\nRe-run with apply=true${trash ? " and confirmTrash=true" : ""} to execute.`,
+            },
+          ],
+        };
+      }
+      if (trash && !confirmTrash) {
+        return {
+          content: [
+            { type: "text", text: `Refused: trashing ${ids.length} message(s) needs confirmTrash=true (final confirmation). ${head}` },
+          ],
+          isError: true,
+        };
+      }
+      if (ids.length === 0) {
+        return { content: [{ type: "text", text: `No messages match "${query}". Nothing to do.` }] };
+      }
+
+      // Gmail batchModify handles up to 1000 message ids per call.
+      for (let i = 0; i < ids.length; i += 1000) {
+        await gmail.users.messages.batchModify({
+          userId: "me",
+          requestBody: {
+            ids: ids.slice(i, i + 1000),
+            addLabelIds: addLabelIds.length ? addLabelIds : undefined,
+            removeLabelIds: removeLabelIds.length ? removeLabelIds : undefined,
+          },
+        });
+      }
+      return {
+        content: [
+          { type: "text", text: `Done. Applied ${plan} to ${ids.length} message(s)${truncated ? " (capped — run again for the rest)" : ""}.` },
+        ],
+      };
     } catch (err) {
       return fail(err);
     }

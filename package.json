@@ -1,6 +1,6 @@
 {
   "name": "multi-gmail-mcp",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "A Model Context Protocol server for managing Gmail (multi-account) from Claude Code.",
   "type": "module",
   "main": "dist/index.js",

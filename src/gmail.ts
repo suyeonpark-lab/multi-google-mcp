@@ -38,3 +38,28 @@ export async function resolveLabelIds(
     throw new Error(`Unknown label: "${n}". Use list_labels to see available names.`);
   });
 }
+
+// Collect message ids matching a query, following pagination. Capped for safety
+// so a broad query can't run away; `truncated` signals there were more.
+export async function collectMessageIds(
+  gmail: gmail_v1.Gmail,
+  query: string,
+  cap = 2000
+): Promise<{ ids: string[]; truncated: boolean }> {
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      q: query,
+      maxResults: 500,
+      pageToken,
+    });
+    for (const m of res.data.messages ?? []) {
+      if (m.id) ids.push(m.id);
+    }
+    if (ids.length >= cap) return { ids: ids.slice(0, cap), truncated: true };
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return { ids, truncated: false };
+}
