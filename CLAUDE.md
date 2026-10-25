@@ -76,7 +76,7 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 - **스코프 업그레이드**: `authorizeInteractive`는 토큰이 있으면 스킵 → 스코프 추가 시 전 계정 `pnpm run auth <account> --force`. `accounts check=true`가 빠진 스코프를 보고.
 - **OAuth 테스트 모드 = refresh token 7일 만료**(`invalid_grant`). 해법은 동의 화면 프로덕션 게시(코드로 못 고침). API 자체(Calendar/Drive)도 GCP 프로젝트에서 사용 설정돼 있어야 함(403 `accessNotConfigured`).
 - **계정 선택 불일치**: 브라우저 계정 선택 화면에서 다른 계정을 고르면 그 토큰이 엉뚱한 이름으로 저장됨(2026-10-25 `--all`에서 4개 전부 어긋남). 인증 직후 Gmail 프로필로 실제 이메일을 확인해 `meta.json`에 기록하고, 기대 이메일과 다르면 저장을 거부한다. 새 계정은 `pnpm run auth <name> --email <addr>`로 시작할 것.
-- corepack은 `devEngines.packageManager.version`을 **정확한 버전**으로 요구(범위 `^11.9.0` ✗).
+- corepack은 `devEngines.packageManager.version`을 **정확한 버전**으로 요구(범위 `^11.9.0` ✗). `pnpm` 심은 **Node 버전 디렉터리별**이라 fnm default가 바뀌면 사라짐 → 셸 init을 `fnm env --corepack-enabled`로(dotfiles 적용됨), 임시방편은 `corepack enable pnpm`.
 
 **EN**
 - **googleapis@173** bundles mismatched `google-auth-library` copies → `google.gmail({auth})` type clash; we assert `auth as never` inside `getGmail`. Runtime is fine.
@@ -84,7 +84,7 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 - **Scope upgrade**: `authorizeInteractive` skips if a token exists → after adding a scope, `pnpm run auth <account> --force` for every account. `accounts check=true` reports missing scopes.
 - **OAuth testing mode = refresh tokens expire in 7 days** (`invalid_grant`). Fix is publishing the consent screen to production (not fixable in code). Each API (Calendar/Drive) must also be enabled in the GCP project (403 `accessNotConfigured`).
 - **Account-chooser mismatch**: picking a different Google account in the browser stores that token under the wrong name (all 4 were crossed on 2026-10-25 with `--all`). After consent we fetch the Gmail profile, record the real email in `meta.json`, and refuse to save if it differs from the expected one. Start new accounts with `pnpm run auth <name> --email <addr>`.
-- corepack wants an **exact** `devEngines.packageManager.version` (not a range like `^11.9.0`).
+- corepack wants an **exact** `devEngines.packageManager.version` (not a range like `^11.9.0`). The `pnpm` shim lives **per Node version dir**, so a new fnm default has none → init the shell with `fnm env --corepack-enabled` (done in dotfiles); stopgap `corepack enable pnpm`.
 
 ---
 
