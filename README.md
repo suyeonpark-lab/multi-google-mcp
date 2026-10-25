@@ -104,6 +104,8 @@ pnpm run auth --list accounts.json
 ```bash
 claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/multi-google-mcp/dist/index.js
 ```
+fnm 사용자는 `~/.local/share/fnm/aliases/default/bin/node`(default 별칭 심볼릭 링크)로 등록하면 Node를 올려도 등록이 깨지지 않아요.
+`which node`가 주는 `fnm_multishells/…` 경로는 셸 임시 경로라 쓰면 안 돼요.
 그다음 새 세션에서: *"이번 주 전 계정 일정 보여줘"*, *"myaccount에서 안 읽은 메일 검색해줘"*,
 *"work 드라이브에서 '계약서' 찾아줘"*.
 

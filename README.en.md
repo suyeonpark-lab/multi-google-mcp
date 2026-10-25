@@ -107,6 +107,8 @@ Register once — with an **absolute** node path (fnm/nvm node isn't on the spaw
 ```bash
 claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google-mcp/dist/index.js
 ```
+With fnm, register `~/.local/share/fnm/aliases/default/bin/node` (the `default` alias symlink) so Node upgrades don't break the registration.
+Never use the `fnm_multishells/…` path that `which node` prints — it is a per-shell temporary path.
 Then in a new session: *"show this week's events across all accounts"*, *"search unread mail in myaccount"*,
 *"find 'contract' in the work Drive"*.
 
