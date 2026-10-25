@@ -98,6 +98,10 @@ pnpm run auth --op "<1Password item name>"       # [--section accounts]
 # or a JSON file / stdin: [{"name":"work","email":"me@work.com"}, …]
 pnpm run auth --list accounts.json
 ```
+Put the document location in `~/.google-mcp/config.json` once and a bare `pnpm run auth` does the same:
+```json
+{"accounts":{"op":"<1Password item name>","section":"accounts"}}      // or {"accounts":{"file":"/path/accounts.json"}}
+```
 It records each expected email in `meta.json`, health-checks the token, skips ✓ accounts, and re-authorizes
 those that are missing, expired, under-scoped, or **belong to a different Google account**. Accounts on disk
 but not in the list are reported, never deleted.
@@ -117,7 +121,7 @@ Tokens are never backed up — restoring means "restore the client file + re-aut
 1. Restore `credentials.json` from your secret store (e.g. 1Password) into `~/.google-mcp/` (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
 2. `pnpm install && pnpm build`
 3. `claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google-mcp/dist/index.js`
-4. `pnpm run auth --op "<1Password item>"` (or `--list accounts.json`) — authorizes every account on the list
+4. Put the document location in `~/.google-mcp/config.json`, then `pnpm run auth` — authorizes every account on the list
 5. In a new session, `accounts check=true` should show every account ✓
 
 ## Scopes

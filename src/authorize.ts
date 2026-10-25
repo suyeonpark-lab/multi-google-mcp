@@ -3,6 +3,8 @@
 //   pnpm run auth --all [--force]                             re-auth every configured account
 //   pnpm run auth --op "<1Password item>" [--section accounts] list-driven (idempotent)
 //   pnpm run auth --list accounts.json | -                    same, from a JSON file / stdin
+//   pnpm run auth                                             list-driven using ~/.google-mcp/config.json:
+//     { "accounts": { "op": "<1Password item>", "section": "accounts" } }  or  { "accounts": { "file": "<path>" } }
 //
 // List-driven mode reads [{ "name", "email" }, ...] — from a 1Password item's
 // custom section (label = name, value = email) or a JSON file — records each
@@ -14,7 +16,17 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
-import { authorizeInteractive, listAccounts, listAccountDirs, checkAccount, writeMeta } from "./auth.js";
+import path from "node:path";
+import { authorizeInteractive, listAccounts, listAccountDirs, checkAccount, writeMeta, CONFIG_DIR } from "./auth.js";
+
+type AccountsSource = { op?: string; section?: string; file?: string };
+async function readConfig(): Promise<{ accounts?: AccountsSource }> {
+  try {
+    return JSON.parse(await readFile(path.join(CONFIG_DIR, "config.json"), "utf-8"));
+  } catch {
+    return {};
+  }
+}
 
 const run = promisify(execFile);
 const args = process.argv.slice(2);
@@ -68,10 +80,11 @@ async function registerFromList(list: Entry[]): Promise<void> {
   if (summary.some((l) => l.startsWith("✗"))) process.exit(1);
 }
 
-const opItem = opt("--op");
-const listPath = opt("--list");
+const cfg = (await readConfig()).accounts;
+const opItem = opt("--op") ?? (args.some((a) => !a.startsWith("--")) || flag("--all") || opt("--list") ? undefined : cfg?.op);
+const listPath = opt("--list") ?? (opItem ? undefined : args.length === 0 ? cfg?.file : undefined);
 if (opItem || listPath) {
-  const list = opItem ? await fromOnePassword(opItem, opt("--section") ?? "accounts") : await fromJson(listPath!);
+  const list = opItem ? await fromOnePassword(opItem, opt("--section") ?? cfg?.section ?? "accounts") : await fromJson(listPath!);
   await registerFromList(list);
 } else {
   const all = flag("--all");
@@ -84,6 +97,7 @@ if (opItem || listPath) {
       "       pnpm run auth --all [--force]",
       '       pnpm run auth --op "<1Password item>" [--section accounts] [--force]',
       "       pnpm run auth --list accounts.json|- [--force]",
+      "       pnpm run auth                      (uses ~/.google-mcp/config.json → accounts.op / accounts.file)",
     ].join("\n"));
     process.exit(1);
   }

@@ -96,6 +96,10 @@ pnpm run auth --op "<1Password 항목 이름>"        # [--section accounts]
 # 또는 JSON 파일/표준입력: [{"name":"work","email":"me@work.com"}, …]
 pnpm run auth --list accounts.json
 ```
+문서 위치를 `~/.google-mcp/config.json`에 한 번 적어 두면 인자 없이 `pnpm run auth`만으로 동작해요:
+```json
+{"accounts":{"op":"<1Password 항목 이름>","section":"accounts"}}      // 또는 {"accounts":{"file":"/path/accounts.json"}}
+```
 각 계정의 기대 이메일을 `meta.json`에 기록하고, 토큰을 검사해 ✓면 건너뛰고, 없음·만료·스코프 부족·**다른 계정의 토큰**이면 재인증해요.
 목록에 없는데 디스크에 있는 계정은 경고만 하고 지우지 않아요.
 
@@ -114,7 +118,7 @@ fnm 사용자는 `~/.local/share/fnm/aliases/default/bin/node`(default 별칭 �
 1. 비밀 저장소(예: 1Password)에서 `credentials.json`을 `~/.google-mcp/`로 복원 (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
 2. `pnpm install && pnpm build`
 3. `claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/multi-google-mcp/dist/index.js`
-4. `pnpm run auth --op "<1Password 항목>"` (또는 `--list accounts.json`) — 목록의 계정을 순서대로 인증
+4. `~/.google-mcp/config.json`에 문서 위치를 적고 `pnpm run auth` — 목록의 계정을 순서대로 인증
 5. 새 세션에서 `accounts check=true`로 전부 ✓ 확인
 
 ## 스코프

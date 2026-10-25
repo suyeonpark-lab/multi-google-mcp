@@ -16,13 +16,13 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 **KO**
 - 빌드: `pnpm build` (tsc → `dist/`)
 - 실행: `pnpm start` (stdio 서버)
-- 계정 인증: `pnpm run auth --op "<1Password 항목>"`(목록 기반, 멱등) / `pnpm run auth <account> --email <addr>` / `--force`
+- 계정 인증: `pnpm run auth`(인자 없음 → `~/.google-mcp/config.json`의 문서를 읽어 멱등 등록; 셸 별칭 `gmcp-auth`) / `--op` / `--list` / `<account> --email <addr>` / `--force`
 - Node는 **fnm**이 관리. 비대화형 셸에선 먼저 활성화: `eval "$(fnm env)"; fnm use default` — 안 하면 `node`/`pnpm`을 못 찾음.
 
 **EN**
 - Build: `pnpm build` (tsc → `dist/`)
 - Run: `pnpm start` (stdio server)
-- Authorize: `pnpm run auth --op "<1Password item>"` (list-driven, idempotent) / `pnpm run auth <account> --email <addr>` / `--force`
+- Authorize: `pnpm run auth` (no args → reads the document named in `~/.google-mcp/config.json`, idempotent; shell alias `gmcp-auth`) / `--op` / `--list` / `<account> --email <addr>` / `--force`
 - Node is managed by **fnm**. In a non-interactive shell, activate first: `eval "$(fnm env)"; fnm use default` — otherwise `node`/`pnpm` aren't found.
 
 ---
