@@ -84,11 +84,23 @@ pnpm install
 pnpm build
 ```
 
-### 3. Authorize each account
+### 3. Authorize accounts
+One at a time:
 ```bash
-pnpm run auth <account>            # e.g. pnpm run auth myaccount
-pnpm run auth <account> --force    # re-consent after invalid_grant or added scopes
+pnpm run auth <account> --email <address>   # the email pins the account chooser; a different account is refused
+pnpm run auth <account> --force             # re-consent after invalid_grant or added scopes
 ```
+**List-driven (recommended).** Keep the account list in a document and let the script read it, opening the browser
+**only for accounts that need it** (idempotent — safe to run any time).
+```bash
+# 1Password: put fields (label = name, value = email) in a custom section `accounts` of an item, then
+pnpm run auth --op "<1Password item name>"       # [--section accounts]
+# or a JSON file / stdin: [{"name":"work","email":"me@work.com"}, …]
+pnpm run auth --list accounts.json
+```
+It records each expected email in `meta.json`, health-checks the token, skips ✓ accounts, and re-authorizes
+those that are missing, expired, under-scoped, or **belong to a different Google account**. Accounts on disk
+but not in the list are reported, never deleted.
 
 ## Use from Claude Code
 Register once — with an **absolute** node path (fnm/nvm node isn't on the spawn PATH):
@@ -103,7 +115,7 @@ Tokens are never backed up — restoring means "restore the client file + re-aut
 1. Restore `credentials.json` from your secret store (e.g. 1Password) into `~/.google-mcp/` (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
 2. `pnpm install && pnpm build`
 3. `claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google-mcp/dist/index.js`
-4. For each account: `pnpm run auth <name> --email <address>` — the email pins the account chooser, and a different account is refused
+4. `pnpm run auth --op "<1Password item>"` (or `--list accounts.json`) — authorizes every account on the list
 5. In a new session, `accounts check=true` should show every account ✓
 
 ## Scopes

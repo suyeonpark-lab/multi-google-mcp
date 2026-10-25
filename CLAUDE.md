@@ -16,13 +16,13 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 **KO**
 - 빌드: `pnpm build` (tsc → `dist/`)
 - 실행: `pnpm start` (stdio 서버)
-- 계정 인증: `pnpm run auth <account> [--force]` (`--force` = 만료·스코프 변경 후 재인증)
+- 계정 인증: `pnpm run auth --op "<1Password 항목>"`(목록 기반, 멱등) / `pnpm run auth <account> --email <addr>` / `--force`
 - Node는 **fnm**이 관리. 비대화형 셸에선 먼저 활성화: `eval "$(fnm env)"; fnm use default` — 안 하면 `node`/`pnpm`을 못 찾음.
 
 **EN**
 - Build: `pnpm build` (tsc → `dist/`)
 - Run: `pnpm start` (stdio server)
-- Authorize an account: `pnpm run auth <account> [--force]` (`--force` = re-consent after expiry / scope change)
+- Authorize: `pnpm run auth --op "<1Password item>"` (list-driven, idempotent) / `pnpm run auth <account> --email <addr>` / `--force`
 - Node is managed by **fnm**. In a non-interactive shell, activate first: `eval "$(fnm env)"; fnm use default` — otherwise `node`/`pnpm` aren't found.
 
 ---
@@ -32,14 +32,16 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 - `src/index.ts` — 공통 도구(ping, accounts, authorize) + 영역별 register 함수 호출.
 - `src/tools/{gmail,calendar,drive}.ts` — 영역별 도구(`gmail_*`, `calendar_*`, `drive_*`). 각 파일은 `registerXxxTools(server)` 하나를 export.
 - `src/google.ts` — `getGmail/getCalendar/getDrive`, `accountArg`/`accountOrAllArg`, `ok/fail`, `forEachAccount`(계정 fan-out), `toRfc3339`(시간 변환).
-- `src/auth.ts` — SCOPES, OAuth + 멀티계정 토큰 저장(`~/.google-mcp/<account>/token.json`), `checkAccount`(토큰 건강검진), `resolveAccounts`.
+- `src/auth.ts` — SCOPES, OAuth + 멀티계정 토큰 저장(`~/.google-mcp/<account>/token.json`), `checkAccount`(토큰 건강검진 + 실제 이메일), `readMeta/writeMeta`(기대 이메일), `resolveAccounts`.
+- `src/authorize.ts` — CLI: 단일 / `--all` / `--op`(1Password 섹션) / `--list`(JSON). 목록 모드는 멱등(✓는 skip, 불일치·만료만 재인증, 디스크의 잉여 계정은 경고만).
 - 시크릿은 `~/.google-mcp/`(gitignore): `credentials.json`(공유), 계정별 토큰.
 
 **EN**
 - `src/index.ts` — common tools (ping, accounts, authorize) + calls each area's register function.
 - `src/tools/{gmail,calendar,drive}.ts` — per-area tools (`gmail_*`, `calendar_*`, `drive_*`); each exports one `registerXxxTools(server)`.
 - `src/google.ts` — `getGmail/getCalendar/getDrive`, `accountArg`/`accountOrAllArg`, `ok/fail`, `forEachAccount` (account fan-out), `toRfc3339`.
-- `src/auth.ts` — SCOPES, OAuth + multi-account token storage (`~/.google-mcp/<account>/token.json`), `checkAccount` (token health), `resolveAccounts`.
+- `src/auth.ts` — SCOPES, OAuth + multi-account token storage (`~/.google-mcp/<account>/token.json`), `checkAccount` (token health + real email), `readMeta/writeMeta` (expected email), `resolveAccounts`.
+- `src/authorize.ts` — CLI: single / `--all` / `--op` (1Password section) / `--list` (JSON). List mode is idempotent (skip ✓, re-auth mismatched/expired, only warn about stray dirs).
 - Secrets in `~/.google-mcp/` (gitignored): `credentials.json` (shared), per-account tokens.
 
 ---

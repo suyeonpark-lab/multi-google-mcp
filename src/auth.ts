@@ -94,6 +94,22 @@ export async function readMeta(account: string): Promise<{ email?: string }> {
     return {};
   }
 }
+export async function writeMeta(account: string, email: string): Promise<void> {
+  const dir = path.join(CONFIG_DIR, account);
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(metaPath(account), JSON.stringify({ email }), { mode: 0o600 });
+}
+// Every account dir (with or without a token) — used to warn about strays.
+export async function listAccountDirs(): Promise<string[]> {
+  try {
+    return (await fs.readdir(CONFIG_DIR, { withFileTypes: true }))
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
 
 function openBrowser(url: string): void {
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -156,16 +172,17 @@ export async function authorizeInteractive(
     throw new Error(`Account mismatch: "${account}" expects ${email} but you signed in as ${actual}. Nothing saved — run again and pick ${email}.`);
   }
   await saveToken(account, tokens.refresh_token);
-  await fs.writeFile(metaPath(account), JSON.stringify({ email: actual }), { mode: 0o600 });
+  await writeMeta(account, actual);
   console.error(`  signed in as ${actual}`);
   return "authorized";
 }
 
-// Health check: try to mint an access token. Catches the test-mode 7-day
-// `invalid_grant` expiry and missing scopes before a real tool call fails.
+// Health check: mint an access token and read the Gmail profile. Catches the
+// test-mode `invalid_grant` expiry, missing scopes, and which account the token
+// really belongs to (for list-driven registration).
 export async function checkAccount(
   account: string
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<{ ok: boolean; detail: string; email?: string }> {
   const client = await loadToken(account);
   if (!client) return { ok: false, detail: "no token" };
   try {
@@ -176,9 +193,13 @@ export async function checkAccount(
     const missing = SCOPES.filter((s) => !granted.has(s)).map((s) =>
       s.replace("https://www.googleapis.com/auth/", "")
     );
-    return missing.length
-      ? { ok: false, detail: `missing scopes: ${missing.join(", ")} → re-auth with --force` }
-      : { ok: true, detail: info.email ?? "ok" };
+    if (missing.length) {
+      return { ok: false, detail: `missing scopes: ${missing.join(", ")} → re-auth with --force` };
+    }
+    const email =
+      (await google.gmail({ version: "v1", auth: client as never }).users.getProfile({ userId: "me" })).data
+        .emailAddress ?? undefined;
+    return { ok: true, detail: "ok", email };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {

@@ -83,11 +83,21 @@ pnpm install
 pnpm build
 ```
 
-### 3. 계정별 인증
+### 3. 계정 인증
+한 계정씩:
 ```bash
-pnpm run auth <account>            # 예: pnpm run auth myaccount
-pnpm run auth <account> --force    # 만료(invalid_grant)·스코프 추가 후 재인증
+pnpm run auth <account> --email <주소>   # 이메일을 주면 계정 선택이 고정되고, 다른 계정을 고르면 저장이 거부돼요
+pnpm run auth <account> --force          # 만료(invalid_grant)·스코프 추가 후 재인증
 ```
+**목록 기반(권장).** 계정 목록 문서를 정본으로 두고, 스크립트가 읽어서 **부족한 계정만** 브라우저를 열어요(멱등 — 언제 돌려도 안전).
+```bash
+# 1Password: 항목의 커스텀 섹션 `accounts`에 필드(라벨=등록명, 값=이메일)를 두면
+pnpm run auth --op "<1Password 항목 이름>"        # [--section accounts]
+# 또는 JSON 파일/표준입력: [{"name":"work","email":"me@work.com"}, …]
+pnpm run auth --list accounts.json
+```
+각 계정의 기대 이메일을 `meta.json`에 기록하고, 토큰을 검사해 ✓면 건너뛰고, 없음·만료·스코프 부족·**다른 계정의 토큰**이면 재인증해요.
+목록에 없는데 디스크에 있는 계정은 경고만 하고 지우지 않아요.
 
 ## Claude Code에서 사용
 한 번 등록 — node **절대경로**를 써요 (fnm/nvm의 node는 spawn PATH에 없어서):
@@ -102,7 +112,7 @@ claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/mult
 1. 비밀 저장소(예: 1Password)에서 `credentials.json`을 `~/.google-mcp/`로 복원 (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
 2. `pnpm install && pnpm build`
 3. `claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/multi-google-mcp/dist/index.js`
-4. 계정마다 `pnpm run auth <이름> --email <주소>` — 이메일을 주면 계정 선택이 고정되고, 다른 계정을 고르면 저장이 거부돼요
+4. `pnpm run auth --op "<1Password 항목>"` (또는 `--list accounts.json`) — 목록의 계정을 순서대로 인증
 5. 새 세션에서 `accounts check=true`로 전부 ✓ 확인
 
 ## 스코프
