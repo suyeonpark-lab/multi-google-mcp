@@ -2,27 +2,37 @@
 
 > 🇬🇧 English: [README.en.md](./README.en.md)
 
-[Claude Code](https://claude.com/claude-code)에서 **여러 Gmail 계정**을 다루는
+[Claude Code](https://claude.com/claude-code)에서 **여러 Google 계정**의 **Gmail · Calendar · Drive**를 다루는
 [MCP](https://modelcontextprotocol.io) 서버 — 내 OAuth 클라이언트로, TypeScript로 직접 만들었어요.
 
 > 로컬에서 실행돼요. 각자 **자기 Google Cloud OAuth 클라이언트**와 **자기 계정 토큰**을 씁니다.
 > 공유·호스팅 없음.
 
 ## 도구
-| 도구 | 설명 |
-| --- | --- |
-| `accounts` | 설정된(인증된) 계정 목록 |
-| `authorize` | 계정 1회 브라우저 OAuth 인증 |
-| `search` | 계정 검색 (Gmail 쿼리 문법) |
-| `list_labels` | 계정의 라벨 목록 |
-| `create_label` | 라벨 생성 (`/`로 중첩, 예: `보관/금융`) |
-| `label` | 스레드에 라벨 추가/제거 (이름으로; `INBOX` 제거 = 보관) |
-| `trash` | 스레드 휴지통 이동 |
-| `create_filter` | Gmail 필터 생성 (`gmail.settings.basic` 필요) |
-| `list_filters` | 필터 목록 |
-| `ping` | 헬스체크 |
+| 영역 | 도구 | 설명 |
+| --- | --- | --- |
+| 공통 | `accounts` | 계정 목록; `check=true`면 토큰 건강검진(만료·스코프) |
+| | `authorize` | 계정 브라우저 OAuth 인증; `force=true`면 재인증 |
+| | `ping` | 헬스체크 |
+| Gmail | `gmail_search` ★ | Gmail 쿼리 문법 검색 |
+| | `gmail_list_labels` ★ / `gmail_create_label` | 라벨 목록 / 생성(`/`로 중첩) |
+| | `gmail_label` / `gmail_trash` | 스레드 라벨 추가·제거(이름으로; `INBOX` 제거 = 보관) / 휴지통 |
+| | `gmail_list_filters` ★ / `gmail_create_filter` | 필터 목록 / 생성 |
+| | `gmail_batch` | 쿼리 매칭 전체에 일괄 라벨·보관·휴지통 (미리보기 기본, 휴지통은 `confirmTrash`) |
+| Calendar | `calendar_list` ★ | 캘린더 목록 |
+| | `calendar_events` ★ | 기간 내 일정 — **전 계정 통합 아젠다**(기본 지금~7일) |
+| | `calendar_create_event` / `calendar_update_event` | 일정 생성 / 부분 수정 |
+| | `calendar_delete_event` | 일정 삭제(`confirm=true`) |
+| Drive | `drive_search` ★ / `drive_recent` ★ | 이름·본문 검색(또는 raw q) / 최근 수정 파일 |
+| | `drive_get` / `drive_read` | 메타데이터 / 본문 읽기(Docs→텍스트, Sheets→CSV) |
+| | `drive_create` / `drive_update` | 폴더·텍스트 파일 생성(Google Doc 변환 가능) / 이름 변경·이동·본문 교체 |
+| | `drive_trash` | 휴지통(`confirm=true`) |
 
-모든 도구는 선택적 `account` 인자를 받아요. 계정이 하나면 자동 선택, 여럿이면 지정(생략 시 목록 안내).
+모든 도구는 `account` 인자를 받아요. ★ 표시(읽기 전용)는 `account="all"`(여럿일 때 기본)로
+**전 계정에 동시 조회**하고 계정별로 묶어 보여줘요. 쓰기 도구는 계정 하나를 지정해야 합니다.
+
+시간 입력: `"YYYY-MM-DD"`(종일) 또는 `"YYYY-MM-DDTHH:MM"`(`timeZone` 기준, 기본 `Asia/Seoul`,
+환경변수 `GMAIL_MCP_TZ`로 변경).
 
 ## 동작 원리
 
@@ -32,36 +42,40 @@ Claude Code가 자식 프로세스로 띄우고, 도구 목록(`tools/list`)을 
 
 **계층 구조.**
 ```
-Claude Code ──(stdio 위 JSON-RPC)──▶ src/index.ts   (도구 등록)
+Claude Code ──(stdio 위 JSON-RPC)──▶ src/index.ts            (공통 도구 + 모듈 등록)
                                           │
+                     ┌────────────────────┼────────────────────┐
+                     ▼                    ▼                    ▼
+            src/tools/gmail.ts   src/tools/calendar.ts   src/tools/drive.ts
+                     └────────────────────┼────────────────────┘
                                           ▼
-                                     src/gmail.ts    (getGmail + 라벨 헬퍼)
-                                          │
+                                     src/google.ts   (API 클라이언트 · 계정 fan-out · 시간 변환)
                                           ▼
-                                     src/auth.ts     (계정별 OAuth 토큰)
-                                          │
+                                     src/auth.ts     (계정별 OAuth 토큰 · 건강검진)
                                           ▼
-                                     Gmail API (googleapis)
+                                 Gmail / Calendar / Drive API (googleapis)
 ```
 
 **인증(OAuth 2.0).** Google Cloud 프로젝트가 OAuth *클라이언트*(`credentials.json`)를 제공해요.
 `pnpm run auth <account>`가 브라우저를 열어 권한을 받으면, *refresh token*이
-`~/.gmail-mcp/<account>/token.json`에 저장돼요. 런타임엔 그 토큰을 읽어 짧은 access token을
-자동 갱신 — 브라우저는 필요 없어요.
+`~/.gmail-mcp/<account>/token.json`에 저장돼요. 런타임엔 그 토큰으로 짧은 access token을
+자동 갱신 — 브라우저는 필요 없어요. 한 번의 동의가 Gmail·Calendar·Drive 스코프를 모두 포함해요.
 
-**멀티계정.** 서버 하나, 계정 여러 개. 각 계정은 그냥 토큰 폴더일 뿐이고, 도구가 `account`
+**멀티계정.** 서버 하나, 계정 여러 개. 각 계정은 토큰 폴더일 뿐이고, 도구가 `account`
 인자로 골라요. `credentials.json`(앱 정체성)은 공유하고, 토큰만 계정별로 달라요.
+읽기 도구의 `"all"`은 계정마다 병렬 호출 후 결과를 합치고, 한 계정이 실패해도 나머지는 보여줘요.
 
-**시크릿.** `credentials.json`·`token.json`은 `~/.gmail-mcp/`(레포 밖)에 있고 gitignore돼요 —
-민감 정보는 커밋되지 않아요.
+**시크릿.** `credentials.json`·`token.json`은 `~/.gmail-mcp/`(레포 밖)에 있고 gitignore돼요.
 
 ## 셋업
 
 ### 1. Google Cloud OAuth 클라이언트 (1회)
-1. [console.cloud.google.com](https://console.cloud.google.com) → 새 프로젝트 → **Gmail API** 사용 설정
-2. OAuth 동의 화면: **External**; 본인 Gmail 계정을 **테스트 사용자**에 추가
+1. [console.cloud.google.com](https://console.cloud.google.com) → 새 프로젝트 → **Gmail API · Google Calendar API · Google Drive API** 사용 설정
+2. OAuth 동의 화면: **External**; 본인 Google 계정들을 **테스트 사용자**에 추가
 3. 사용자 인증 정보 → **OAuth 클라이언트 ID** → **데스크톱 앱** → **JSON 다운로드**
 4. `~/.gmail-mcp/credentials.json`으로 저장
+5. **게시 상태를 프로덕션으로** 전환 — 테스트 모드의 refresh token은 **7일 뒤 만료**(`invalid_grant`)돼요.
+   미검증 앱이라 "확인되지 않은 앱" 경고는 계속 뜨지만, 토큰은 영구화돼요.
 
 ### 2. 빌드
 ```bash
@@ -71,7 +85,8 @@ pnpm build
 
 ### 3. 계정별 인증
 ```bash
-pnpm run auth <account>      # 예: pnpm run auth myaccount
+pnpm run auth <account>            # 예: pnpm run auth myaccount
+pnpm run auth <account> --force    # 만료(invalid_grant)·스코프 추가 후 재인증
 ```
 
 ## Claude Code에서 사용
@@ -79,14 +94,9 @@ pnpm run auth <account>      # 예: pnpm run auth myaccount
 ```bash
 claude mcp add multi-gmail-mcp -s user -- /절대경로/node /절대경로/multi-gmail-mcp/dist/index.js
 ```
-그다음 새 세션에서: *"myaccount에서 안 읽은 메일 검색해줘"*
-
-## 로드맵
-1. ✅ 서버 골격 + `ping`
-2. ✅ Gmail OAuth + `search`
-3. ✅ `label` / `trash` / `filter` 도구
-4. ✅ 멀티계정 (`account` 인자 + `authorize`)
+그다음 새 세션에서: *"이번 주 전 계정 일정 보여줘"*, *"myaccount에서 안 읽은 메일 검색해줘"*,
+*"work 드라이브에서 '계약서' 찾아줘"*.
 
 ## 스코프
-`gmail.modify`(읽기 + 라벨 + 휴지통)와 `gmail.settings.basic`(필터).
-스코프를 추가하기 전에 인증한 토큰은 재인증해야 해요: 토큰 폴더를 지우고 `pnpm run auth <account>`.
+`gmail.modify`(읽기+라벨+휴지통) · `gmail.settings.basic`(필터) · `calendar` · `drive`.
+스코프를 추가하면 모든 계정을 `--force`로 재인증해야 해요. `accounts check=true`가 빠진 스코프를 알려줍니다.

@@ -1,451 +1,78 @@
-// multi-gmail-mcp — MCP server for managing multiple Gmail accounts.
+// multi-gmail-mcp — MCP server for Gmail + Calendar + Drive across multiple Google accounts.
 //
-// One server, many accounts. Tools take an optional `account`; `accounts` lists
-// what's configured. Tokens live in ~/.gmail-mcp/<account>/token.json.
+// One server, many accounts. Tools take an `account`; read-only tools accept "all".
+// Tokens live in ~/.gmail-mcp/<account>/token.json.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { gmail_v1 } from "googleapis";
-import { listAccounts, authorizeInteractive } from "./auth.js";
-import { getGmail, resolveLabelIds, collectMessageIds } from "./gmail.js";
+import { listAccounts, authorizeInteractive, checkAccount } from "./auth.js";
+import { ok, fail } from "./google.js";
+import { registerGmailTools } from "./tools/gmail.js";
+import { registerCalendarTools } from "./tools/calendar.js";
+import { registerDriveTools } from "./tools/drive.js";
 
-const server = new McpServer({ name: "multi-gmail-mcp", version: "0.5.0" });
+const server = new McpServer({ name: "multi-gmail-mcp", version: "1.0.0" });
 
-// Reusable "which account?" argument.
-const accountArg = z
-  .string()
-  .optional()
-  .describe("Which Gmail account (e.g. 'personal'). Omit if only one is configured.");
-
-// Turn an error into an MCP error result.
-function fail(err: unknown) {
-  const text = err instanceof Error ? err.message : String(err);
-  return { content: [{ type: "text" as const, text }], isError: true };
-}
-
-// --- ping ---
 server.registerTool(
   "ping",
   {
     title: "Ping",
     description: "Health check — returns 'pong'.",
-    inputSchema: {
-      message: z.string().optional().describe("Optional text to echo back"),
-    },
+    inputSchema: { message: z.string().optional().describe("Optional text to echo back") },
   },
-  async ({ message }) => ({
-    content: [{ type: "text", text: `pong${message ? `: ${message}` : ""}` }],
-  })
+  async ({ message }) => ok(`pong${message ? `: ${message}` : ""}`)
 );
 
-// --- accounts ---
 server.registerTool(
   "accounts",
   {
-    title: "List Gmail accounts",
+    title: "List Google accounts",
     description:
-      "List the accounts configured in this server (those authorized with a saved token). " +
-      "Use a returned name as the 'account' argument for other tools.",
-    inputSchema: {},
+      "List the accounts configured in this server (those with a saved token). " +
+      "check=true also verifies each token (expiry, scopes) — run this first when a tool fails with invalid_grant.",
+    inputSchema: { check: z.boolean().optional().describe("Verify each token against Google") },
   },
-  async () => {
+  async ({ check }) => {
     const accts = await listAccounts();
-    const text = accts.length
-      ? `Configured accounts:\n${accts.map((a) => `• ${a}`).join("\n")}`
-      : "No accounts configured yet. Run `pnpm run auth <account>`.";
-    return { content: [{ type: "text", text }] };
+    if (!accts.length) return ok("No accounts configured yet. Run `pnpm run auth <account>`.");
+    if (!check) return ok(`Configured accounts:\n${accts.map((a) => `• ${a}`).join("\n")}`);
+    const rows = await Promise.all(
+      accts.map(async (a) => {
+        const r = await checkAccount(a);
+        return `• ${a}  ${r.ok ? "✓" : "✗"} ${r.detail}`;
+      })
+    );
+    return ok(`Account health:\n${rows.join("\n")}`);
   }
 );
 
-// --- authorize ---
 server.registerTool(
   "authorize",
   {
-    title: "Authorize a Gmail account",
+    title: "Authorize a Google account",
     description:
-      "Run the one-time OAuth flow for an account: opens a browser, you pick that " +
-      "Google account and grant access, and a token is saved. " +
-      "Requires ~/.gmail-mcp/credentials.json (your Google Cloud OAuth client). " +
-      "Only works where a browser can open (local desktop) and blocks until you finish consent.",
+      "Run the OAuth flow for an account: opens a browser, you pick that Google account and grant " +
+      "Gmail + Calendar + Drive access, and a token is saved. force=true re-consents an existing account " +
+      "(after invalid_grant or a scope change). Needs ~/.gmail-mcp/credentials.json and a local browser; blocks until consent finishes.",
     inputSchema: {
-      account: z.string().describe("A name for this account, e.g. 'personal' or 'main'"),
+      account: z.string().describe("A name for this account, e.g. 'personal'"),
+      force: z.boolean().optional().describe("Re-authorize even if a token exists"),
     },
   },
-  async ({ account }) => {
+  async ({ account, force }) => {
     try {
-      await authorizeInteractive(account);
-      return { content: [{ type: "text", text: `✓ Authorized "${account}".` }] };
+      const r = await authorizeInteractive(account, force);
+      return ok(r === "already" ? `"${account}" already authorized. Use force=true to re-consent.` : `✓ Authorized "${account}".`);
     } catch (err) {
       return fail(err);
     }
   }
 );
 
-// --- search ---
-server.registerTool(
-  "search",
-  {
-    title: "Search Gmail",
-    description:
-      "Search an account using Gmail query syntax " +
-      '(e.g. "from:foo is:unread", "category:promotions older_than:1y"). ' +
-      "Returns date, sender, subject, snippet, and ids (use the thread id with label/trash).",
-    inputSchema: {
-      query: z
-        .string()
-        .describe('Gmail query, e.g. "from:foo is:unread newer_than:7d"'),
-      account: accountArg,
-      maxResults: z
-        .number()
-        .int()
-        .min(1)
-        .max(25)
-        .optional()
-        .describe("How many messages to return (default 10, max 25)"),
-    },
-  },
-  async ({ query, account, maxResults }) => {
-    try {
-      const gmail = await getGmail(account);
-      const list = await gmail.users.messages.list({
-        userId: "me",
-        q: query,
-        maxResults: maxResults ?? 10,
-      });
-      const messages = list.data.messages ?? [];
-      if (messages.length === 0) {
-        return { content: [{ type: "text", text: `No messages match: ${query}` }] };
-      }
-      const lines = await Promise.all(
-        messages.map(async (m) => {
-          const msg = await gmail.users.messages.get({
-            userId: "me",
-            id: m.id!,
-            format: "metadata",
-            metadataHeaders: ["Subject", "From", "Date"],
-          });
-          const headers = msg.data.payload?.headers ?? [];
-          const h = (name: string) =>
-            headers.find((x) => x.name === name)?.value ?? "";
-          return [
-            `• ${h("Date")} | ${h("From")}`,
-            `  ${h("Subject")}`,
-            `  ${msg.data.snippet ?? ""}`,
-            `  [id:${m.id} thread:${m.threadId}]`,
-          ].join("\n");
-        })
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Found ${messages.length} message(s):\n\n${lines.join("\n\n")}`,
-          },
-        ],
-      };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- list_labels ---
-server.registerTool(
-  "list_labels",
-  {
-    title: "List labels",
-    description: "List an account's labels (name, id, type). Useful before labeling.",
-    inputSchema: { account: accountArg },
-  },
-  async ({ account }) => {
-    try {
-      const gmail = await getGmail(account);
-      const res = await gmail.users.labels.list({ userId: "me" });
-      const labels = (res.data.labels ?? [])
-        .map((l) => `• ${l.name}  [${l.id}]  (${l.type})`)
-        .join("\n");
-      return { content: [{ type: "text", text: labels || "No labels." }] };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- create_label ---
-server.registerTool(
-  "create_label",
-  {
-    title: "Create label",
-    description: "Create a new label. Nested labels use '/', e.g. '보관/금융'.",
-    inputSchema: {
-      account: accountArg,
-      name: z.string().describe("Label name, e.g. '보관/금융'"),
-    },
-  },
-  async ({ account, name }) => {
-    try {
-      const gmail = await getGmail(account);
-      const res = await gmail.users.labels.create({
-        userId: "me",
-        requestBody: {
-          name,
-          labelListVisibility: "labelShow",
-          messageListVisibility: "show",
-        },
-      });
-      return {
-        content: [{ type: "text", text: `Created label "${res.data.name}" [${res.data.id}]` }],
-      };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- label (add/remove labels on a thread) ---
-server.registerTool(
-  "label",
-  {
-    title: "Label a thread",
-    description:
-      "Add and/or remove labels on a thread (use the thread id from search results). " +
-      "Labels are given by NAME; system labels INBOX/UNREAD/STARRED/IMPORTANT also work. " +
-      "Removing INBOX = archive.",
-    inputSchema: {
-      account: accountArg,
-      threadId: z.string().describe("Thread id (the [thread:...] value from search)"),
-      add: z.array(z.string()).optional().describe("Label names to add"),
-      remove: z.array(z.string()).optional().describe("Label names to remove"),
-    },
-  },
-  async ({ account, threadId, add, remove }) => {
-    try {
-      const gmail = await getGmail(account);
-      const addLabelIds = add?.length ? await resolveLabelIds(gmail, add) : undefined;
-      const removeLabelIds = remove?.length
-        ? await resolveLabelIds(gmail, remove)
-        : undefined;
-      if (!addLabelIds && !removeLabelIds) {
-        throw new Error("Provide 'add' and/or 'remove' label names.");
-      }
-      await gmail.users.threads.modify({
-        userId: "me",
-        id: threadId,
-        requestBody: { addLabelIds, removeLabelIds },
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Updated thread ${threadId}: +[${(add ?? []).join(", ")}] -[${(remove ?? []).join(", ")}]`,
-          },
-        ],
-      };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- trash ---
-server.registerTool(
-  "trash",
-  {
-    title: "Trash a thread",
-    description:
-      "Move a thread to Trash (recoverable for 30 days). Use the thread id from search.",
-    inputSchema: {
-      account: accountArg,
-      threadId: z.string().describe("Thread id"),
-    },
-  },
-  async ({ account, threadId }) => {
-    try {
-      const gmail = await getGmail(account);
-      await gmail.users.threads.trash({ userId: "me", id: threadId });
-      return { content: [{ type: "text", text: `Trashed thread ${threadId}.` }] };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- create_filter (needs gmail.settings.basic; re-auth if you get a scope error) ---
-server.registerTool(
-  "create_filter",
-  {
-    title: "Create a filter",
-    description:
-      "Create a Gmail filter: match incoming mail by criteria, then apply actions. " +
-      "Needs the gmail.settings.basic scope — if you get a permission error, re-run authorize. " +
-      "Give at least one criterion and one action.",
-    inputSchema: {
-      account: accountArg,
-      from: z.string().optional().describe("Match sender, e.g. 'news@x.com' or a domain"),
-      to: z.string().optional().describe("Match recipient"),
-      subject: z.string().optional().describe("Match subject"),
-      query: z.string().optional().describe("Free Gmail query (hasTheWord), e.g. 'unsubscribe'"),
-      addLabel: z.string().optional().describe("Label NAME to apply"),
-      archive: z.boolean().optional().describe("Skip the inbox (remove INBOX)"),
-      markRead: z.boolean().optional().describe("Mark as read (remove UNREAD)"),
-      trash: z.boolean().optional().describe("Send straight to Trash"),
-    },
-  },
-  async ({ account, from, to, subject, query, addLabel, archive, markRead, trash }) => {
-    try {
-      const gmail = await getGmail(account);
-      const criteria: gmail_v1.Schema$FilterCriteria = {};
-      if (from) criteria.from = from;
-      if (to) criteria.to = to;
-      if (subject) criteria.subject = subject;
-      if (query) criteria.query = query;
-      if (Object.keys(criteria).length === 0) {
-        throw new Error("Provide at least one criterion: from / to / subject / query.");
-      }
-      const addLabelIds: string[] = [];
-      const removeLabelIds: string[] = [];
-      if (addLabel) addLabelIds.push(...(await resolveLabelIds(gmail, [addLabel])));
-      if (trash) addLabelIds.push("TRASH");
-      if (archive) removeLabelIds.push("INBOX");
-      if (markRead) removeLabelIds.push("UNREAD");
-      if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
-        throw new Error("Provide at least one action: addLabel / archive / markRead / trash.");
-      }
-      const action: gmail_v1.Schema$FilterAction = {};
-      if (addLabelIds.length) action.addLabelIds = addLabelIds;
-      if (removeLabelIds.length) action.removeLabelIds = removeLabelIds;
-      const res = await gmail.users.settings.filters.create({
-        userId: "me",
-        requestBody: { criteria, action },
-      });
-      return { content: [{ type: "text", text: `Created filter ${res.data.id}.` }] };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- list_filters (needs gmail.settings.basic) ---
-server.registerTool(
-  "list_filters",
-  {
-    title: "List filters",
-    description: "List the account's Gmail filters. Needs the gmail.settings.basic scope.",
-    inputSchema: { account: accountArg },
-  },
-  async ({ account }) => {
-    try {
-      const gmail = await getGmail(account);
-      const res = await gmail.users.settings.filters.list({ userId: "me" });
-      const filters = res.data.filter ?? [];
-      const text = filters.length
-        ? filters
-            .map(
-              (f) =>
-                `• ${f.id}\n  criteria: ${JSON.stringify(f.criteria)}\n  action: ${JSON.stringify(f.action)}`
-            )
-            .join("\n\n")
-        : "No filters.";
-      return { content: [{ type: "text", text }] };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
-
-// --- batch: bulk label / archive / trash by query ---
-server.registerTool(
-  "batch",
-  {
-    title: "Bulk apply to a query",
-    description:
-      "Apply an action to ALL messages matching a Gmail query (paginated, so it is not " +
-      "capped at 25 like search). Actions: add/remove labels, archive (remove from inbox), " +
-      "or trash. **Previews by default** (apply=false): returns the match count and the planned " +
-      "action without changing anything — show this to the user first. Re-run with apply=true to " +
-      "execute. **Trashing also requires confirmTrash=true** (a deliberate final confirmation). " +
-      "Prefer archive over trash when unsure: archive keeps the mail, just removes it from the inbox.",
-    inputSchema: {
-      account: accountArg,
-      query: z
-        .string()
-        .describe('Gmail query selecting the messages, e.g. "from:costco.co.kr" or "category:promotions older_than:1y"'),
-      addLabels: z.array(z.string()).optional().describe("Label names to add"),
-      removeLabels: z.array(z.string()).optional().describe("Label names to remove"),
-      archive: z.boolean().optional().describe("Remove from inbox (keep the mail) — same as removing INBOX"),
-      trash: z.boolean().optional().describe("Move to Trash (recoverable 30 days). Requires confirmTrash."),
-      apply: z.boolean().optional().describe("false (default) = preview only; true = execute"),
-      confirmTrash: z.boolean().optional().describe("Must be true to actually trash (final confirmation)"),
-    },
-  },
-  async ({ account, query, addLabels, removeLabels, archive, trash, apply, confirmTrash }) => {
-    try {
-      const gmail = await getGmail(account);
-
-      const addLabelIds: string[] = [];
-      const removeLabelIds: string[] = [];
-      if (addLabels?.length) addLabelIds.push(...(await resolveLabelIds(gmail, addLabels)));
-      if (removeLabels?.length) removeLabelIds.push(...(await resolveLabelIds(gmail, removeLabels)));
-      if (archive) removeLabelIds.push("INBOX");
-      if (trash) addLabelIds.push("TRASH");
-      if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
-        throw new Error("Provide an action: addLabels / removeLabels / archive / trash.");
-      }
-
-      const planParts: string[] = [];
-      if (addLabels?.length) planParts.push(`+[${addLabels.join(", ")}]`);
-      if (removeLabels?.length) planParts.push(`-[${removeLabels.join(", ")}]`);
-      if (archive) planParts.push("archive(-INBOX)");
-      if (trash) planParts.push("TRASH");
-      const plan = planParts.join(" ");
-
-      const { ids, truncated } = await collectMessageIds(gmail, query);
-      const head = `${ids.length}${truncated ? "+" : ""} message(s) match "${query}". Action: ${plan}.`;
-
-      if (!apply) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `[PREVIEW — nothing changed] ${head}\nRe-run with apply=true${trash ? " and confirmTrash=true" : ""} to execute.`,
-            },
-          ],
-        };
-      }
-      if (trash && !confirmTrash) {
-        return {
-          content: [
-            { type: "text", text: `Refused: trashing ${ids.length} message(s) needs confirmTrash=true (final confirmation). ${head}` },
-          ],
-          isError: true,
-        };
-      }
-      if (ids.length === 0) {
-        return { content: [{ type: "text", text: `No messages match "${query}". Nothing to do.` }] };
-      }
-
-      // Gmail batchModify handles up to 1000 message ids per call.
-      for (let i = 0; i < ids.length; i += 1000) {
-        await gmail.users.messages.batchModify({
-          userId: "me",
-          requestBody: {
-            ids: ids.slice(i, i + 1000),
-            addLabelIds: addLabelIds.length ? addLabelIds : undefined,
-            removeLabelIds: removeLabelIds.length ? removeLabelIds : undefined,
-          },
-        });
-      }
-      return {
-        content: [
-          { type: "text", text: `Done. Applied ${plan} to ${ids.length} message(s)${truncated ? " (capped — run again for the rest)" : ""}.` },
-        ],
-      };
-    } catch (err) {
-      return fail(err);
-    }
-  }
-);
+registerGmailTools(server);
+registerCalendarTools(server);
+registerDriveTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

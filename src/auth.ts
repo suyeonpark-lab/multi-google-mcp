@@ -2,7 +2,7 @@
 //
 // Layout under ~/.gmail-mcp/ (gitignored):
 //   credentials.json          ← shared OAuth client (the app identity)
-//   <account>/token.json      ← per-account access token
+//   <account>/token.json      ← per-account refresh token
 //
 // One MCP server handles many accounts; the account is chosen per tool call.
 
@@ -13,14 +13,18 @@ import { authenticate } from "@google-cloud/local-auth";
 import { google, Auth } from "googleapis";
 
 // Use googleapis' own OAuth2Client type so it matches google.gmail({ auth }).
-type AuthClient = Auth.OAuth2Client;
+export type AuthClient = Auth.OAuth2Client;
 
-const SCOPES = [
+// One consent covers Gmail + Calendar + Drive. Adding a scope later means
+// re-authorizing every account (`pnpm run auth <account> --force`).
+export const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify", // read + labels + trash
   "https://www.googleapis.com/auth/gmail.settings.basic", // create/list filters
+  "https://www.googleapis.com/auth/calendar", // calendars + events (read/write)
+  "https://www.googleapis.com/auth/drive", // files (read/write, all files)
 ];
 
-const CONFIG_DIR =
+export const CONFIG_DIR =
   process.env.GMAIL_MCP_DIR ?? path.join(os.homedir(), ".gmail-mcp");
 const CREDENTIALS_PATH =
   process.env.GMAIL_MCP_CREDENTIALS ?? path.join(CONFIG_DIR, "credentials.json");
@@ -37,7 +41,7 @@ export async function listAccounts(): Promise<string[]> {
     for (const e of entries) {
       if (!e.isDirectory()) continue;
       try {
-        await fs.access(path.join(CONFIG_DIR, e.name, "token.json"));
+        await fs.access(tokenPath(e.name));
         accounts.push(e.name);
       } catch {
         // no token in this dir → not an authorized account
@@ -66,15 +70,20 @@ async function saveToken(account: string, refreshToken: string): Promise<void> {
     client_id: key.client_id,
     client_secret: key.client_secret,
     refresh_token: refreshToken,
+    scopes: SCOPES,
   });
   const dir = path.join(CONFIG_DIR, account);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, "token.json"), payload);
+  await fs.writeFile(path.join(dir, "token.json"), payload, { mode: 0o600 });
 }
 
-// INTERACTIVE: `pnpm run auth <account>`. Opens a browser for consent.
-export async function authorizeInteractive(account: string): Promise<void> {
-  if (await loadToken(account)) return; // already authorized
+// INTERACTIVE: `pnpm run auth <account> [--force]`. Opens a browser for consent.
+// `force` re-runs consent even if a token exists (expired token / new scopes).
+export async function authorizeInteractive(
+  account: string,
+  force = false
+): Promise<"authorized" | "already"> {
+  if (!force && (await loadToken(account))) return "already";
   const client = await authenticate({
     scopes: SCOPES,
     keyfilePath: CREDENTIALS_PATH,
@@ -86,9 +95,39 @@ export async function authorizeInteractive(account: string): Promise<void> {
     );
   }
   await saveToken(account, refreshToken);
+  return "authorized";
 }
 
-// SERVER: resolve which account to use.
+// Health check: try to mint an access token. Catches the test-mode 7-day
+// `invalid_grant` expiry and missing scopes before a real tool call fails.
+export async function checkAccount(
+  account: string
+): Promise<{ ok: boolean; detail: string }> {
+  const client = await loadToken(account);
+  if (!client) return { ok: false, detail: "no token" };
+  try {
+    const { token } = await client.getAccessToken();
+    if (!token) return { ok: false, detail: "no access token" };
+    const info = await client.getTokenInfo(token);
+    const granted = new Set(info.scopes ?? []);
+    const missing = SCOPES.filter((s) => !granted.has(s)).map((s) =>
+      s.replace("https://www.googleapis.com/auth/", "")
+    );
+    return missing.length
+      ? { ok: false, detail: `missing scopes: ${missing.join(", ")} → re-auth with --force` }
+      : { ok: true, detail: info.email ?? "ok" };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      detail: msg.includes("invalid_grant")
+        ? "invalid_grant (token expired/revoked) → `pnpm run auth " + account + " --force`"
+        : msg,
+    };
+  }
+}
+
+// SERVER: resolve which single account to use.
 //   explicit account            → use it (must be authorized)
 //   omitted + exactly 1 account → use that one
 //   omitted + 0 or many         → throw a helpful message
@@ -103,8 +142,11 @@ export async function getAuthClient(account?: string): Promise<AuthClient> {
       );
     }
     throw new Error(
-      `Multiple accounts available: ${available.join(", ")}. Specify one via the "account" argument.`
+      `Multiple accounts available: ${available.join(", ")}. Specify one via the "account" argument (or "all" for read-only tools).`
     );
+  }
+  if (chosen === "all") {
+    throw new Error('"all" is only valid for read-only tools. Specify one account.');
   }
   const client = await loadToken(chosen);
   if (!client) {
@@ -113,4 +155,19 @@ export async function getAuthClient(account?: string): Promise<AuthClient> {
     );
   }
   return client;
+}
+
+// Read-only tools accept account = "all" (fan out) or omitted (= all when several).
+export async function resolveAccounts(account?: string): Promise<string[]> {
+  const available = await listAccounts();
+  if (available.length === 0) {
+    throw new Error("No accounts authorized yet. Run `pnpm run auth <account>` first.");
+  }
+  if (!account || account === "all") return available;
+  if (!available.includes(account)) {
+    throw new Error(
+      `Account "${account}" is not authorized. Available: ${available.join(", ")}.`
+    );
+  }
+  return [account];
 }

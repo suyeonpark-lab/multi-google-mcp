@@ -1,7 +1,7 @@
 {
   "name": "multi-gmail-mcp",
-  "version": "0.5.0",
-  "description": "A Model Context Protocol server for managing Gmail (multi-account) from Claude Code.",
+  "version": "1.0.0",
+  "description": "A Model Context Protocol server for Gmail, Calendar and Drive across multiple Google accounts, for Claude Code.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -18,6 +18,8 @@
   "keywords": [
     "mcp",
     "gmail",
+    "google-calendar",
+    "google-drive",
     "claude"
   ],
   "author": "",
