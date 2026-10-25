@@ -98,6 +98,14 @@ claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google
 Then in a new session: *"show this week's events across all accounts"*, *"search unread mail in myaccount"*,
 *"find 'contract' in the work Drive"*.
 
+## Restore on a new machine
+Tokens are never backed up — restoring means "restore the client file + re-authorize each account".
+1. Restore `credentials.json` from your secret store (e.g. 1Password) into `~/.google-mcp/` (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
+2. `pnpm install && pnpm build`
+3. `claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google-mcp/dist/index.js`
+4. For each account: `pnpm run auth <name> --email <address>` — the email pins the account chooser, and a different account is refused
+5. In a new session, `accounts check=true` should show every account ✓
+
 ## Scopes
 `gmail.modify` (read + labels + trash) · `gmail.settings.basic` (filters) · `calendar.readonly`+`calendar.events` (no calendar settings/ACLs) · `drive` (all files — needed to search/edit existing files).
 Adding a scope means re-authorizing every account with `--force`; `accounts check=true` reports missing scopes.

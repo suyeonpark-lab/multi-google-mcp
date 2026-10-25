@@ -97,6 +97,14 @@ claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/mult
 그다음 새 세션에서: *"이번 주 전 계정 일정 보여줘"*, *"myaccount에서 안 읽은 메일 검색해줘"*,
 *"work 드라이브에서 '계약서' 찾아줘"*.
 
+## 새 머신에서 복원
+토큰은 백업하지 않아요 — 복원은 "클라이언트 파일 복원 + 계정별 재인증"이에요.
+1. 비밀 저장소(예: 1Password)에서 `credentials.json`을 `~/.google-mcp/`로 복원 (`chmod 700 ~/.google-mcp && chmod 600 ~/.google-mcp/credentials.json`)
+2. `pnpm install && pnpm build`
+3. `claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/multi-google-mcp/dist/index.js`
+4. 계정마다 `pnpm run auth <이름> --email <주소>` — 이메일을 주면 계정 선택이 고정되고, 다른 계정을 고르면 저장이 거부돼요
+5. 새 세션에서 `accounts check=true`로 전부 ✓ 확인
+
 ## 스코프
 `gmail.modify`(읽기+라벨+휴지통) · `gmail.settings.basic`(필터) · `calendar.readonly`+`calendar.events`(캘린더 설정·공유 권한은 제외) · `drive`(전체 파일 — 기존 파일 검색·수정에 필요).
 스코프를 추가하면 모든 계정을 `--force`로 재인증해야 해요. `accounts check=true`가 빠진 스코프를 알려줍니다.
