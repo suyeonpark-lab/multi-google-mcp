@@ -10,3 +10,6 @@ token*.json
 gcp-oauth*.json
 .env
 .env.*
+
+# Claude Code local settings (per-machine)
+.claude/settings.local.json
