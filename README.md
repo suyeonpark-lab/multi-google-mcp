@@ -1,4 +1,4 @@
-# multi-gmail-mcp
+# multi-google-mcp
 
 > 🇬🇧 English: [README.en.md](./README.en.md)
 
@@ -32,7 +32,7 @@
 **전 계정에 동시 조회**하고 계정별로 묶어 보여줘요. 쓰기 도구는 계정 하나를 지정해야 합니다.
 
 시간 입력: `"YYYY-MM-DD"`(종일) 또는 `"YYYY-MM-DDTHH:MM"`(`timeZone` 기준, 기본 `Asia/Seoul`,
-환경변수 `GMAIL_MCP_TZ`로 변경).
+환경변수 `GOOGLE_MCP_TZ`로 변경).
 
 ## 동작 원리
 
@@ -58,14 +58,14 @@ Claude Code ──(stdio 위 JSON-RPC)──▶ src/index.ts            (공통 
 
 **인증(OAuth 2.0).** Google Cloud 프로젝트가 OAuth *클라이언트*(`credentials.json`)를 제공해요.
 `pnpm run auth <account>`가 브라우저를 열어 권한을 받으면, *refresh token*이
-`~/.gmail-mcp/<account>/token.json`에 저장돼요. 런타임엔 그 토큰으로 짧은 access token을
+`~/.google-mcp/<account>/token.json`에 저장돼요. 런타임엔 그 토큰으로 짧은 access token을
 자동 갱신 — 브라우저는 필요 없어요. 한 번의 동의가 Gmail·Calendar·Drive 스코프를 모두 포함해요.
 
 **멀티계정.** 서버 하나, 계정 여러 개. 각 계정은 토큰 폴더일 뿐이고, 도구가 `account`
 인자로 골라요. `credentials.json`(앱 정체성)은 공유하고, 토큰만 계정별로 달라요.
 읽기 도구의 `"all"`은 계정마다 병렬 호출 후 결과를 합치고, 한 계정이 실패해도 나머지는 보여줘요.
 
-**시크릿.** `credentials.json`·`token.json`은 `~/.gmail-mcp/`(레포 밖)에 있고 gitignore돼요.
+**시크릿.** `credentials.json`·`token.json`은 `~/.google-mcp/`(레포 밖)에 있고 gitignore돼요.
 
 ## 셋업
 
@@ -73,7 +73,7 @@ Claude Code ──(stdio 위 JSON-RPC)──▶ src/index.ts            (공통 
 1. [console.cloud.google.com](https://console.cloud.google.com) → 새 프로젝트 → **Gmail API · Google Calendar API · Google Drive API** 사용 설정
 2. OAuth 동의 화면: **External**; 본인 Google 계정들을 **테스트 사용자**에 추가
 3. 사용자 인증 정보 → **OAuth 클라이언트 ID** → **데스크톱 앱** → **JSON 다운로드**
-4. `~/.gmail-mcp/credentials.json`으로 저장
+4. `~/.google-mcp/credentials.json`으로 저장
 5. **게시 상태를 프로덕션으로** 전환 — 테스트 모드의 refresh token은 **7일 뒤 만료**(`invalid_grant`)돼요.
    미검증 앱이라 "확인되지 않은 앱" 경고는 계속 뜨지만, 토큰은 영구화돼요.
 
@@ -92,7 +92,7 @@ pnpm run auth <account> --force    # 만료(invalid_grant)·스코프 추가 후
 ## Claude Code에서 사용
 한 번 등록 — node **절대경로**를 써요 (fnm/nvm의 node는 spawn PATH에 없어서):
 ```bash
-claude mcp add multi-gmail-mcp -s user -- /절대경로/node /절대경로/multi-gmail-mcp/dist/index.js
+claude mcp add multi-google-mcp -s user -- /절대경로/node /절대경로/multi-google-mcp/dist/index.js
 ```
 그다음 새 세션에서: *"이번 주 전 계정 일정 보여줘"*, *"myaccount에서 안 읽은 메일 검색해줘"*,
 *"work 드라이브에서 '계약서' 찾아줘"*.

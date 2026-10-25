@@ -4,7 +4,7 @@ dist/
 *.log
 
 # OAuth secrets & tokens — NEVER commit these
-.gmail-mcp/
+.google-mcp/
 credentials*.json
 token*.json
 gcp-oauth*.json

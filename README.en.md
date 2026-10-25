@@ -1,4 +1,4 @@
-# multi-gmail-mcp
+# multi-google-mcp
 
 > 🇰🇷 한국어: [README.md](./README.md)
 
@@ -33,7 +33,7 @@ Every tool takes `account`. Read-only tools (★) accept `account="all"` (the de
 configured) and **query every account in parallel**, grouped by account. Write tools need one account.
 
 Times: `"YYYY-MM-DD"` (all-day) or `"YYYY-MM-DDTHH:MM"` in `timeZone` (default `Asia/Seoul`;
-override with env `GMAIL_MCP_TZ`).
+override with env `GOOGLE_MCP_TZ`).
 
 ## How it works
 
@@ -59,14 +59,14 @@ Claude Code ──(JSON-RPC over stdio)──▶ src/index.ts            (common
 
 **Auth (OAuth 2.0).** A Google Cloud project provides the OAuth *client* (`credentials.json`).
 `pnpm run auth <account>` opens a browser for consent and saves the *refresh token* to
-`~/.gmail-mcp/<account>/token.json`. At runtime that token mints short-lived access tokens — no browser.
+`~/.google-mcp/<account>/token.json`. At runtime that token mints short-lived access tokens — no browser.
 One consent covers the Gmail, Calendar and Drive scopes.
 
 **Multi-account.** One server, many accounts. Each account is just a token folder, selected per call via
 `account`. `credentials.json` (the app identity) is shared; only tokens differ. `"all"` on read tools
 calls every account in parallel and merges; one account failing doesn't hide the others.
 
-**Secrets.** `credentials.json` and `token.json` live in `~/.gmail-mcp/` (outside the repo) and are gitignored.
+**Secrets.** `credentials.json` and `token.json` live in `~/.google-mcp/` (outside the repo) and are gitignored.
 
 ## Setup
 
@@ -74,7 +74,7 @@ calls every account in parallel and merges; one account failing doesn't hide the
 1. [console.cloud.google.com](https://console.cloud.google.com) → new project → enable **Gmail API, Google Calendar API, Google Drive API**
 2. OAuth consent screen: **External**; add your Google accounts as **test users**
 3. Credentials → **OAuth client ID** → **Desktop app** → **Download JSON**
-4. Save as `~/.gmail-mcp/credentials.json`
+4. Save as `~/.google-mcp/credentials.json`
 5. **Publish to production** — test-mode refresh tokens **expire after 7 days** (`invalid_grant`).
    Unverified apps keep showing the "unverified app" warning, but tokens become permanent.
 
@@ -93,7 +93,7 @@ pnpm run auth <account> --force    # re-consent after invalid_grant or added sco
 ## Use from Claude Code
 Register once — with an **absolute** node path (fnm/nvm node isn't on the spawn PATH):
 ```bash
-claude mcp add multi-gmail-mcp -s user -- /abs/path/node /abs/path/multi-gmail-mcp/dist/index.js
+claude mcp add multi-google-mcp -s user -- /abs/path/node /abs/path/multi-google-mcp/dist/index.js
 ```
 Then in a new session: *"show this week's events across all accounts"*, *"search unread mail in myaccount"*,
 *"find 'contract' in the work Drive"*.

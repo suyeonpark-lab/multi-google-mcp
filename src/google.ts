@@ -72,7 +72,7 @@ export async function forEachAccount(
   return results.map(({ a, text }) => `## ${a}\n${text}`).join("\n\n");
 }
 
-export const DEFAULT_TZ = process.env.GMAIL_MCP_TZ ?? "Asia/Seoul";
+export const DEFAULT_TZ = process.env.GOOGLE_MCP_TZ ?? "Asia/Seoul";
 
 // UTC offset string ("+09:00") for a time zone at a given instant.
 export function tzOffset(tz: string, at: Date = new Date()): string {

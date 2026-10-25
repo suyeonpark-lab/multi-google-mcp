@@ -1,4 +1,4 @@
-# CLAUDE.md — multi-gmail-mcp
+# CLAUDE.md — multi-google-mcp
 
 이 레포에서 작업하는 Claude Code를 위한 지침입니다. (한국어 기본 + 영어 병기 — 사용자 학습용)
 Guidance for Claude Code working **in this repo**. (Korean primary, English alongside.)
@@ -32,15 +32,15 @@ Guidance for Claude Code working **in this repo**. (Korean primary, English alon
 - `src/index.ts` — 공통 도구(ping, accounts, authorize) + 영역별 register 함수 호출.
 - `src/tools/{gmail,calendar,drive}.ts` — 영역별 도구(`gmail_*`, `calendar_*`, `drive_*`). 각 파일은 `registerXxxTools(server)` 하나를 export.
 - `src/google.ts` — `getGmail/getCalendar/getDrive`, `accountArg`/`accountOrAllArg`, `ok/fail`, `forEachAccount`(계정 fan-out), `toRfc3339`(시간 변환).
-- `src/auth.ts` — SCOPES, OAuth + 멀티계정 토큰 저장(`~/.gmail-mcp/<account>/token.json`), `checkAccount`(토큰 건강검진), `resolveAccounts`.
-- 시크릿은 `~/.gmail-mcp/`(gitignore): `credentials.json`(공유), 계정별 토큰.
+- `src/auth.ts` — SCOPES, OAuth + 멀티계정 토큰 저장(`~/.google-mcp/<account>/token.json`), `checkAccount`(토큰 건강검진), `resolveAccounts`.
+- 시크릿은 `~/.google-mcp/`(gitignore): `credentials.json`(공유), 계정별 토큰.
 
 **EN**
 - `src/index.ts` — common tools (ping, accounts, authorize) + calls each area's register function.
 - `src/tools/{gmail,calendar,drive}.ts` — per-area tools (`gmail_*`, `calendar_*`, `drive_*`); each exports one `registerXxxTools(server)`.
 - `src/google.ts` — `getGmail/getCalendar/getDrive`, `accountArg`/`accountOrAllArg`, `ok/fail`, `forEachAccount` (account fan-out), `toRfc3339`.
-- `src/auth.ts` — SCOPES, OAuth + multi-account token storage (`~/.gmail-mcp/<account>/token.json`), `checkAccount` (token health), `resolveAccounts`.
-- Secrets in `~/.gmail-mcp/` (gitignored): `credentials.json` (shared), per-account tokens.
+- `src/auth.ts` — SCOPES, OAuth + multi-account token storage (`~/.google-mcp/<account>/token.json`), `checkAccount` (token health), `resolveAccounts`.
+- Secrets in `~/.google-mcp/` (gitignored): `credentials.json` (shared), per-account tokens.
 
 ---
 

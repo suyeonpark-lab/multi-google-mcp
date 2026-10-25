@@ -1,15 +1,18 @@
 // auth.ts — Google OAuth, multi-account.
 //
-// Layout under ~/.gmail-mcp/ (gitignored):
+// Layout under ~/.google-mcp/ (gitignored):
 //   credentials.json          ← shared OAuth client (the app identity)
 //   <account>/token.json      ← per-account refresh token
+//   <account>/meta.json       ← optional { email } for login_hint
 //
 // One MCP server handles many accounts; the account is chosen per tool call.
 
 import path from "node:path";
 import os from "node:os";
 import { promises as fs } from "node:fs";
-import { authenticate } from "@google-cloud/local-auth";
+import http from "node:http";
+import { spawn } from "node:child_process";
+import type { AddressInfo } from "node:net";
 import { google, Auth } from "googleapis";
 
 // Use googleapis' own OAuth2Client type so it matches google.gmail({ auth }).
@@ -26,9 +29,9 @@ export const SCOPES = [
 ];
 
 export const CONFIG_DIR =
-  process.env.GMAIL_MCP_DIR ?? path.join(os.homedir(), ".gmail-mcp");
+  process.env.GOOGLE_MCP_DIR ?? path.join(os.homedir(), ".google-mcp");
 const CREDENTIALS_PATH =
-  process.env.GMAIL_MCP_CREDENTIALS ?? path.join(CONFIG_DIR, "credentials.json");
+  process.env.GOOGLE_MCP_CREDENTIALS ?? path.join(CONFIG_DIR, "credentials.json");
 
 function tokenPath(account: string): string {
   return path.join(CONFIG_DIR, account, "token.json");
@@ -79,24 +82,74 @@ async function saveToken(account: string, refreshToken: string): Promise<void> {
   await fs.chmod(path.join(dir, "token.json"), 0o600); // writeFile mode is ignored if the file existed
 }
 
-// INTERACTIVE: `pnpm run auth <account> [--force]`. Opens a browser for consent.
-// `force` re-runs consent even if a token exists (expired token / new scopes).
+// Per-account metadata next to the token (not secret): the Google email, used
+// as login_hint so re-auth skips the account chooser.
+function metaPath(account: string): string {
+  return path.join(CONFIG_DIR, account, "meta.json");
+}
+export async function readMeta(account: string): Promise<{ email?: string }> {
+  try {
+    return JSON.parse(await fs.readFile(metaPath(account), "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function openBrowser(url: string): void {
+  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  const child = spawn(cmd, [url], { stdio: "ignore", detached: true });
+  child.on("error", () => console.error(`Open this URL in a browser:\n${url}`));
+  child.unref();
+}
+
+// INTERACTIVE: `pnpm run auth <account> [--force] [--email x@gmail.com]`.
+// Own loopback flow (instead of @google-cloud/local-auth) so we can send
+// prompt=consent — without it Google returns NO refresh token on re-consent —
+// and login_hint, which preselects the account in Google's chooser.
 export async function authorizeInteractive(
   account: string,
-  force = false
+  opts: { force?: boolean; email?: string } = {}
 ): Promise<"authorized" | "already"> {
-  if (!force && (await loadToken(account))) return "already";
-  const client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
+  if (!opts.force && (await loadToken(account))) return "already";
+  const keys = JSON.parse(await fs.readFile(CREDENTIALS_PATH, "utf-8"));
+  const key = keys.installed ?? keys.web;
+  const email = opts.email ?? (await readMeta(account)).email;
+
+  // Desktop OAuth clients accept any loopback port; bind first, then build the URL.
+  const server = http.createServer();
+  await new Promise<void>((res) => server.listen(0, "127.0.0.1", res));
+  const port = (server.address() as AddressInfo).port;
+  const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
+  const client = new google.auth.OAuth2(key.client_id, key.client_secret, redirectUri);
+  const url = client.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: SCOPES,
+    login_hint: email,
   });
-  const refreshToken = client.credentials.refresh_token;
-  if (!refreshToken) {
-    throw new Error(
-      "No refresh token returned by Google. Remove the account folder and try again."
-    );
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for consent (5 min).")), 5 * 60_000);
+    server.on("request", (req, resp) => {
+      const u = new URL(req.url ?? "/", redirectUri);
+      if (u.pathname !== "/oauth2callback") { resp.writeHead(404).end(); return; }
+      const err = u.searchParams.get("error");
+      const c = u.searchParams.get("code");
+      resp.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      resp.end(err ? `<h2>Authorization failed: ${err}</h2>` : `<h2>✓ "${account}" authorized — you can close this tab.</h2>`);
+      clearTimeout(timer);
+      err || !c ? reject(new Error(`Consent denied: ${err ?? "no code"}`)) : resolve(c);
+    });
+    console.error(`Opening browser for "${account}"${email ? ` (${email})` : ""}…`);
+    openBrowser(url);
+  }).finally(() => server.close());
+
+  const { tokens } = await client.getToken(code);
+  if (!tokens.refresh_token) {
+    throw new Error("Google returned no refresh token. Revoke the app at myaccount.google.com/permissions and retry.");
   }
-  await saveToken(account, refreshToken);
+  await saveToken(account, tokens.refresh_token);
+  if (opts.email) await fs.writeFile(metaPath(account), JSON.stringify({ email: opts.email }), { mode: 0o600 });
   return "authorized";
 }
 

@@ -1,7 +1,7 @@
-// multi-gmail-mcp — MCP server for Gmail + Calendar + Drive across multiple Google accounts.
+// multi-google-mcp — MCP server for Gmail + Calendar + Drive across multiple Google accounts.
 //
 // One server, many accounts. Tools take an `account`; read-only tools accept "all".
-// Tokens live in ~/.gmail-mcp/<account>/token.json.
+// Tokens live in ~/.google-mcp/<account>/token.json.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,7 +12,7 @@ import { registerGmailTools } from "./tools/gmail.js";
 import { registerCalendarTools } from "./tools/calendar.js";
 import { registerDriveTools } from "./tools/drive.js";
 
-const server = new McpServer({ name: "multi-gmail-mcp", version: "1.0.0" });
+const server = new McpServer({ name: "multi-google-mcp", version: "1.0.0" });
 
 server.registerTool(
   "ping",
@@ -57,15 +57,16 @@ server.registerTool(
     description:
       "Run the OAuth flow for an account: opens a browser, you pick that Google account and grant " +
       "Gmail + Calendar + Drive access, and a token is saved. force=true re-consents an existing account " +
-      "(after invalid_grant or a scope change). Needs ~/.gmail-mcp/credentials.json and a local browser; blocks until consent finishes.",
+      "(after invalid_grant or a scope change). Needs ~/.google-mcp/credentials.json and a local browser; blocks until consent finishes.",
     inputSchema: {
       account: z.string().describe("A name for this account, e.g. 'personal'"),
       force: z.boolean().optional().describe("Re-authorize even if a token exists"),
+      email: z.string().optional().describe("Google email — preselects the account in the consent screen; remembered"),
     },
   },
-  async ({ account, force }) => {
+  async ({ account, force, email }) => {
     try {
-      const r = await authorizeInteractive(account, force);
+      const r = await authorizeInteractive(account, { force, email });
       return ok(r === "already" ? `"${account}" already authorized. Use force=true to re-consent.` : `✓ Authorized "${account}".`);
     } catch (err) {
       return fail(err);
@@ -79,4 +80,4 @@ registerDriveTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("multi-gmail-mcp running (stdio)");
+console.error("multi-google-mcp running (stdio)");
