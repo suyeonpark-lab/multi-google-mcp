@@ -6,7 +6,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listAccounts, authorizeInteractive, checkAccount } from "./auth.js";
+import { listAccounts, authorizeInteractive, checkAccount, readMeta } from "./auth.js";
 import { ok, fail, RO, WRITE } from "./google.js";
 import { registerGmailTools } from "./tools/gmail.js";
 import { registerCalendarTools } from "./tools/calendar.js";
@@ -38,11 +38,12 @@ server.registerTool(
   async ({ check }) => {
     const accts = await listAccounts();
     if (!accts.length) return ok("No accounts configured yet. Run `pnpm run auth <account>`.");
-    if (!check) return ok(`Configured accounts:\n${accts.map((a) => `• ${a}`).join("\n")}`);
+    const label = async (a: string) => `${a} <${(await readMeta(a)).email ?? "?"}>`;
+    if (!check) return ok(`Configured accounts:\n${(await Promise.all(accts.map(async (a) => `• ${await label(a)}`))).join("\n")}`);
     const rows = await Promise.all(
       accts.map(async (a) => {
         const r = await checkAccount(a);
-        return `• ${a}  ${r.ok ? "✓" : "✗"} ${r.detail}`;
+        return `• ${await label(a)}  ${r.ok ? "✓" : "✗"} ${r.detail}`;
       })
     );
     return ok(`Account health:\n${rows.join("\n")}`);

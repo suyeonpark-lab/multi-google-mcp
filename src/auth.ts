@@ -148,8 +148,16 @@ export async function authorizeInteractive(
   if (!tokens.refresh_token) {
     throw new Error("Google returned no refresh token. Revoke the app at myaccount.google.com/permissions and retry.");
   }
+  // Verify WHICH Google account was actually chosen in the browser. Without this,
+  // picking the wrong account in the chooser silently stores it under this name.
+  client.setCredentials(tokens);
+  const actual = (await google.gmail({ version: "v1", auth: client as never }).users.getProfile({ userId: "me" })).data.emailAddress ?? "";
+  if (email && actual.toLowerCase() !== email.toLowerCase()) {
+    throw new Error(`Account mismatch: "${account}" expects ${email} but you signed in as ${actual}. Nothing saved — run again and pick ${email}.`);
+  }
   await saveToken(account, tokens.refresh_token);
-  if (opts.email) await fs.writeFile(metaPath(account), JSON.stringify({ email: opts.email }), { mode: 0o600 });
+  await fs.writeFile(metaPath(account), JSON.stringify({ email: actual }), { mode: 0o600 });
+  console.error(`  signed in as ${actual}`);
   return "authorized";
 }
 
