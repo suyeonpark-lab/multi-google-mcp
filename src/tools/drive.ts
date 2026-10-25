@@ -3,7 +3,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { drive_v3 } from "googleapis";
-import { getDrive, accountArg, accountOrAllArg, ok, fail, forEachAccount } from "../google.js";
+import { getDrive, accountArg, accountOrAllArg, ok, fail, forEachAccount, DESTRUCTIVE, RO, WRITE } from "../google.js";
 
 const FIELDS = "id,name,mimeType,modifiedTime,size,owners(emailAddress),parents,webViewLink,trashed";
 const LIST_FIELDS = `nextPageToken,files(${FIELDS})`;
@@ -41,6 +41,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_search",
     {
       title: "Search Drive",
+      annotations: RO,
       description:
         "Search files across accounts. `text` matches name or content; `query` is raw Drive q syntax " +
         "(e.g. \"mimeType='application/pdf' and modifiedTime > '2026-01-01'\"). Trashed files excluded.",
@@ -79,6 +80,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_recent",
     {
       title: "Recent files",
+      annotations: RO,
       description: "Most recently modified files per account (excluding trash).",
       inputSchema: {
         account: accountOrAllArg,
@@ -106,6 +108,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_get",
     {
       title: "File metadata",
+      annotations: RO,
       description: "Metadata for one file (name, type, size, parents, link, owners).",
       inputSchema: { account: accountArg, fileId: z.string() },
     },
@@ -125,6 +128,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_read",
     {
       title: "Read file content",
+      annotations: RO,
       description:
         "Read a file as text. Google Docs → plain text, Sheets → CSV, Slides → text; " +
         `text/* and JSON files are downloaded. Binary files are refused (use the webViewLink). Truncated at ${MAX_CHARS} chars.`,
@@ -157,6 +161,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_create",
     {
       title: "Create file or folder",
+      annotations: WRITE,
       description:
         "Create a folder, or a text file with the given content. mimeType defaults to text/plain " +
         "(use text/markdown, application/json, …). Set convertToDoc=true to create a Google Doc from the text.",
@@ -195,6 +200,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_update",
     {
       title: "Rename / move / overwrite",
+      annotations: WRITE,
       description: "Rename a file, move it to another folder, and/or replace its text content.",
       inputSchema: {
         account: accountArg,
@@ -232,6 +238,7 @@ export function registerDriveTools(server: McpServer): void {
     "drive_trash",
     {
       title: "Trash a file",
+      annotations: DESTRUCTIVE,
       description: "Move a file to Drive trash (auto-deleted after 30 days). Requires confirm=true.",
       inputSchema: {
         account: accountArg,

@@ -99,5 +99,5 @@ Then in a new session: *"show this week's events across all accounts"*, *"search
 *"find 'contract' in the work Drive"*.
 
 ## Scopes
-`gmail.modify` (read + labels + trash) · `gmail.settings.basic` (filters) · `calendar` · `drive`.
+`gmail.modify` (read + labels + trash) · `gmail.settings.basic` (filters) · `calendar.readonly`+`calendar.events` (no calendar settings/ACLs) · `drive` (all files — needed to search/edit existing files).
 Adding a scope means re-authorizing every account with `--force`; `accounts check=true` reports missing scopes.

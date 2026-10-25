@@ -98,5 +98,5 @@ claude mcp add multi-gmail-mcp -s user -- /절대경로/node /절대경로/multi
 *"work 드라이브에서 '계약서' 찾아줘"*.
 
 ## 스코프
-`gmail.modify`(읽기+라벨+휴지통) · `gmail.settings.basic`(필터) · `calendar` · `drive`.
+`gmail.modify`(읽기+라벨+휴지통) · `gmail.settings.basic`(필터) · `calendar.readonly`+`calendar.events`(캘린더 설정·공유 권한은 제외) · `drive`(전체 파일 — 기존 파일 검색·수정에 필요).
 스코프를 추가하면 모든 계정을 `--force`로 재인증해야 해요. `accounts check=true`가 빠진 스코프를 알려줍니다.

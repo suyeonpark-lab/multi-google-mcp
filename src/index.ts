@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { listAccounts, authorizeInteractive, checkAccount } from "./auth.js";
-import { ok, fail } from "./google.js";
+import { ok, fail, RO, WRITE } from "./google.js";
 import { registerGmailTools } from "./tools/gmail.js";
 import { registerCalendarTools } from "./tools/calendar.js";
 import { registerDriveTools } from "./tools/drive.js";
@@ -18,6 +18,7 @@ server.registerTool(
   "ping",
   {
     title: "Ping",
+    annotations: RO,
     description: "Health check — returns 'pong'.",
     inputSchema: { message: z.string().optional().describe("Optional text to echo back") },
   },
@@ -28,6 +29,7 @@ server.registerTool(
   "accounts",
   {
     title: "List Google accounts",
+    annotations: RO,
     description:
       "List the accounts configured in this server (those with a saved token). " +
       "check=true also verifies each token (expiry, scopes) — run this first when a tool fails with invalid_grant.",
@@ -51,6 +53,7 @@ server.registerTool(
   "authorize",
   {
     title: "Authorize a Google account",
+    annotations: WRITE,
     description:
       "Run the OAuth flow for an account: opens a browser, you pick that Google account and grant " +
       "Gmail + Calendar + Drive access, and a token is saved. force=true re-consents an existing account " +

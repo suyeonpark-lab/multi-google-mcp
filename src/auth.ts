@@ -20,7 +20,8 @@ export type AuthClient = Auth.OAuth2Client;
 export const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify", // read + labels + trash
   "https://www.googleapis.com/auth/gmail.settings.basic", // create/list filters
-  "https://www.googleapis.com/auth/calendar", // calendars + events (read/write)
+  "https://www.googleapis.com/auth/calendar.readonly", // list calendars
+  "https://www.googleapis.com/auth/calendar.events", // events read/write (not calendar settings/ACLs)
   "https://www.googleapis.com/auth/drive", // files (read/write, all files)
 ];
 
@@ -73,8 +74,9 @@ async function saveToken(account: string, refreshToken: string): Promise<void> {
     scopes: SCOPES,
   });
   const dir = path.join(CONFIG_DIR, account);
-  await fs.mkdir(dir, { recursive: true });
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   await fs.writeFile(path.join(dir, "token.json"), payload, { mode: 0o600 });
+  await fs.chmod(path.join(dir, "token.json"), 0o600); // writeFile mode is ignored if the file existed
 }
 
 // INTERACTIVE: `pnpm run auth <account> [--force]`. Opens a browser for consent.

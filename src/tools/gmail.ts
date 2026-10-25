@@ -3,7 +3,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { gmail_v1 } from "googleapis";
-import { getGmail, accountArg, accountOrAllArg, ok, fail, forEachAccount } from "../google.js";
+import { getGmail, accountArg, accountOrAllArg, ok, fail, forEachAccount, DESTRUCTIVE, RO, WRITE } from "../google.js";
 
 const SYSTEM_LABELS = new Set([
   "INBOX", "UNREAD", "STARRED", "IMPORTANT", "TRASH", "SPAM", "SENT", "DRAFT", "CHAT",
@@ -53,6 +53,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_search",
     {
       title: "Search Gmail",
+      annotations: RO,
       description:
         "Search using Gmail query syntax " +
         '(e.g. "from:foo is:unread", "category:promotions older_than:1y"). ' +
@@ -99,6 +100,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_list_labels",
     {
       title: "List labels",
+      annotations: RO,
       description: "List labels (name, id, type). Useful before labeling.",
       inputSchema: { account: accountOrAllArg },
     },
@@ -120,6 +122,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_create_label",
     {
       title: "Create label",
+      annotations: WRITE,
       description: "Create a new label. Nested labels use '/', e.g. '보관/금융'.",
       inputSchema: { account: accountArg, name: z.string().describe("Label name, e.g. '보관/금융'") },
     },
@@ -141,6 +144,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_label",
     {
       title: "Label a thread",
+      annotations: WRITE,
       description:
         "Add and/or remove labels on a thread (thread id from gmail_search). " +
         "Labels are given by NAME; system labels INBOX/UNREAD/STARRED/IMPORTANT also work. Removing INBOX = archive.",
@@ -169,6 +173,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_trash",
     {
       title: "Trash a thread",
+      annotations: DESTRUCTIVE,
       description: "Move a thread to Trash (recoverable for 30 days). Use the thread id from gmail_search.",
       inputSchema: { account: accountArg, threadId: z.string().describe("Thread id") },
     },
@@ -187,6 +192,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_create_filter",
     {
       title: "Create a filter",
+      annotations: WRITE,
       description:
         "Create a Gmail filter: match incoming mail by criteria, then apply actions. " +
         "Give at least one criterion and one action.",
@@ -235,6 +241,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_list_filters",
     {
       title: "List filters",
+      annotations: RO,
       description: "List Gmail filters (criteria + action).",
       inputSchema: { account: accountOrAllArg },
     },
@@ -258,6 +265,7 @@ export function registerGmailTools(server: McpServer): void {
     "gmail_batch",
     {
       title: "Bulk apply to a query",
+      annotations: DESTRUCTIVE,
       description:
         "Apply an action to ALL messages matching a Gmail query (paginated, not capped at 25). " +
         "Actions: add/remove labels, archive (remove from inbox), or trash. **Previews by default** (apply=false): " +

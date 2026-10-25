@@ -5,7 +5,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { calendar_v3 } from "googleapis";
 import {
-  getCalendar, accountArg, accountOrAllArg, ok, fail, forEachAccount, DEFAULT_TZ, toRfc3339,
+  getCalendar, accountArg, accountOrAllArg, ok, fail, forEachAccount, DEFAULT_TZ, toRfc3339, DESTRUCTIVE, RO, WRITE,
 } from "../google.js";
 
 const tzArg = z.string().optional().describe(`IANA time zone (default ${DEFAULT_TZ})`);
@@ -36,6 +36,7 @@ export function registerCalendarTools(server: McpServer): void {
     "calendar_list",
     {
       title: "List calendars",
+      annotations: RO,
       description: "List calendars each account can see (id, name, access role, primary).",
       inputSchema: { account: accountOrAllArg },
     },
@@ -59,6 +60,7 @@ export function registerCalendarTools(server: McpServer): void {
     "calendar_events",
     {
       title: "List events (agenda)",
+      annotations: RO,
       description:
         "List events in a time range, across all accounts by default — the unified agenda. " +
         "Defaults: from=now, to=+7 days, primary calendar. Optional free-text filter.",
@@ -100,6 +102,7 @@ export function registerCalendarTools(server: McpServer): void {
     "calendar_create_event",
     {
       title: "Create event",
+      annotations: WRITE,
       description:
         'Create an event. start/end: "YYYY-MM-DD" for all-day (end is exclusive: a 1-day event has end = next day), ' +
         'or "YYYY-MM-DDTHH:MM" in timeZone. Attendees get an invitation only if sendUpdates=true.',
@@ -140,6 +143,7 @@ export function registerCalendarTools(server: McpServer): void {
     "calendar_update_event",
     {
       title: "Update event",
+      annotations: WRITE,
       description: "Patch fields of an existing event (only the given fields change). Event id from calendar_events.",
       inputSchema: {
         account: accountArg,
@@ -176,6 +180,7 @@ export function registerCalendarTools(server: McpServer): void {
     "calendar_delete_event",
     {
       title: "Delete event",
+      annotations: DESTRUCTIVE,
       description: "Delete an event. Requires confirm=true (not recoverable from the API).",
       inputSchema: {
         account: accountArg,

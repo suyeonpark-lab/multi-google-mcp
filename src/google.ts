@@ -32,6 +32,11 @@ export const accountOrAllArg = z
   .optional()
   .describe('Which account, or "all" to fan out across every account (default when several).');
 
+// MCP tool annotations: hints for the client (Claude Code) about side effects.
+export const RO = { readOnlyHint: true, openWorldHint: true } as const;
+export const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: true } as const;
+export const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, openWorldHint: true } as const;
+
 export type ToolResult = {
   content: { type: "text"; text: string }[];
   isError?: boolean;
